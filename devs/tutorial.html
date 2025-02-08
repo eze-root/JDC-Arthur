@@ -2,7 +2,7 @@
 <html lang="zh" data-accent-color="violet" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Add Default configs - JDC-Arthur 0.0.1 文档</title><link rel="index" title="索引" href="../genindex.html" /><link rel="search" title="搜索" href="../search.html" /><link rel="next" title="DIY for 亚瑟" href="intro.html" /><link rel="prev" title="DevLogs" href="../index.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>刷机教程 - JDC-Arthur 0.0.1 文档</title><link rel="index" title="索引" href="../genindex.html" /><link rel="search" title="搜索" href="../search.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=397bb51e" />
@@ -20,7 +20,7 @@
   --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
 }
 </style>
-    <meta property="og:type" content="website"/><meta property="og:title" content="Add Default configs"/>
+    <meta property="og:type" content="website"/><meta property="og:title" content="刷机教程"/>
 <meta name="twitter:card" content="summary"/>
   </head>
 <body><div class="sy-head">
@@ -58,8 +58,8 @@ data-aria-dark="切换到自动模式">
     <div class="sy-lside-inner md:sticky">
       <div class="sy-scrollbar p-6">
         <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Contents:</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Add Default configs</a></li>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="dev.html">Add Default configs</a></li>
 <li class="toctree-l1"><a class="reference internal" href="intro.html">DIY for 亚瑟</a></li>
 </ul>
 
@@ -72,7 +72,12 @@ data-aria-dark="切换到自动模式">
     <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
       <i class="i-lucide close"></i>
     </button>
-    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/eze-root/JDC-Arthur"
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>该页内容</h3><ul>
+<li><a class="reference internal" href="#u-boot">&#21047;&#20837;U-boot</a></li>
+<li><a class="reference internal" href="#openwrt">&#21047;Openwrt&#31995;&#32479;</a></li>
+<li><a class="reference internal" href="#ap">&#37197;&#32622;AP</a></li>
+</ul>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/eze-root/JDC-Arthur"
   data-type="github" data-user="eze-root" data-repo="JDC-Arthur">
   <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
     <iconify-icon icon="simple-icons:github"></iconify-icon>
@@ -91,7 +96,7 @@ data-aria-dark="切换到自动模式">
     </span>
   </span>
 </a><div class="edit-this-page">
-  <a href="https://github.com/eze-root/JDC-Arthur/blob/master/docs/devs/dev.md">编辑此页面</a>
+  <a href="https://github.com/eze-root/JDC-Arthur/blob/master/docs/devs/tutorial.md">编辑此页面</a>
 </div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -107,7 +112,7 @@ data-aria-dark="切换到自动模式">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">Add Default configs</strong>
+        <strong itemprop="name">刷机教程</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -120,18 +125,29 @@ data-aria-dark="切换到自动模式">
 </div><div class="flex flex-col break-words justify-between">
       <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
         <article class="yue" role="main">
-          <section class="tex2jax_ignore mathjax_ignore" id="add-default-configs">
-<h1>Add Default configs<a class="headerlink" href="#add-default-configs" title="Link to this heading">¶</a></h1>
-<p>为了能自动的初始化一些配置，例如设置默认网关 <code class="docutils literal notranslate"><span class="pre">/etc/config/network</span></code>。</p>
-<p>创建文件夹 <code class="docutils literal notranslate"><span class="pre">files/etc/config</span></code>。</p>
-<p>由于在github action中有如下的命令，因此该配置应该是能被注入到默认的固件中的。</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1">    - name: Load Custom Configuration(加载自定义配置)
-</span><span data-line="2">      run: |
-</span><span data-line="3">        [ -e files ] &amp;&amp; mv files $OPENWRT_PATH/files
-</span><span data-line="4">        [ -e $CONFIG_FILE ] &amp;&amp; mv $CONFIG_FILE $OPENWRT_PATH/.config
-</span><span data-line="5">
-</span></pre></div>
-</div>
+          <section class="tex2jax_ignore mathjax_ignore" id="id1">
+<h1>刷机教程<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h1>
+<section id="u-boot">
+<h2>刷入U-boot<a class="headerlink" href="#u-boot" title="Link to this heading">¶</a></h2>
+<p>see <a class="reference external" href="https://mao.fan/article/72">京东云AX1800 Pro亚瑟超神！免拆开启SSH刷机＆看这一篇就够了</a>。</p>
+</section>
+<section id="openwrt">
+<h2>刷Openwrt系统<a class="headerlink" href="#openwrt" title="Link to this heading">¶</a></h2>
+<p>电脑接入路由器LAN口，路由器断电，用针顶住rest按键后通电，大概10秒左右，红灯闪烁变成蓝灯，松开！</p>
+<p>电脑设置固定IP：192.168.1.10，等待电脑的网络识别即可松开针。</p>
+<p>然后刷入两个包，先刷入factory</p>
+</section>
+<section id="ap">
+<h2>配置AP<a class="headerlink" href="#ap" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>删除除了lan外的全部接口</p></li>
+<li><p>lan的接口设置地址：例如 192.168.123.5。网关：192.168.123.1， dns： 192.168.123.1</p></li>
+<li><p>DHCP: 忽略此接口</p></li>
+<li><p>ipv6设置，全部设为禁用</p></li>
+<li><p>全局网络选项 ipv6 设置为空</p></li>
+</ol>
+<p>重启，即可。</p>
+</section>
 </section>
 
         </article><button class="back-to-top" type="button">
@@ -139,21 +155,7 @@ data-aria-dark="切换到自动模式">
     <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
   </svg>
   <span>回到顶部</span>
-</button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../index.html">
-      <i class="i-lucide chevron-left"></i>
-      <div class="page-info">
-        <span>上一章</span><div class="title">首页</div></div>
-    </a>
-  </div><div class="navigation-next">
-    <a href="intro.html">
-      <div class="page-info">
-        <span>下一章</span>
-        <div class="title">DIY for 亚瑟</div>
-      </div>
-      <i class="i-lucide chevron-right"></i>
-    </a>
-  </div></div></div>
+</button><div class="navigation flex print:hidden"></div></div>
     </div>
   </main>
 </div>

@@ -1,3 +1,8 @@
+# Openwrt固件定制
+
+观察了多个使用Github Action进行固件定制的项目。
+
+主要的项目都基于 [P3TERX](https://github.com/P3TERX/Actions-OpenWrt)。
 
 
 ## Packages

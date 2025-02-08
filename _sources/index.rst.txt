@@ -15,3 +15,4 @@ Or using markdown is OK!
    :caption: Contents:
 
    devs/dev.md
+   devs/intro.md

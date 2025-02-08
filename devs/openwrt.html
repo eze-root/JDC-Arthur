@@ -2,7 +2,7 @@
 <html lang="zh" data-accent-color="violet" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Packages - JDC1800PRO 0.0.1 文档</title><link rel="index" title="索引" href="../genindex.html" /><link rel="search" title="搜索" href="../search.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Openwrt固件定制 - JDC-Arthur 0.0.1 文档</title><link rel="index" title="索引" href="../genindex.html" /><link rel="search" title="搜索" href="../search.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=397bb51e" />
@@ -20,7 +20,7 @@
   --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
 }
 </style>
-    <meta property="og:type" content="website"/><meta property="og:title" content="Packages"/>
+    <meta property="og:type" content="website"/><meta property="og:title" content="Openwrt固件定制"/>
 <meta name="twitter:card" content="summary"/>
   </head>
 <body><div class="sy-head">
@@ -29,7 +29,7 @@
     <a class="sy-head-brand" href="../index.html">
       
       
-      <strong>JDC1800PRO</strong>
+      <strong>JDC-Arthur</strong>
     </a>
     <div class="sy-head-nav" id="HeadNav">
       <nav class="sy-head-links"></nav>
@@ -59,7 +59,8 @@ data-aria-dark="切换到自动模式">
       <div class="sy-scrollbar p-6">
         <div class="globaltoc" data-expand-depth="0"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="dev.html">DIY for 亚瑟</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dev.html">Add Default configs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="intro.html">DIY for 亚瑟</a></li>
 </ul>
 
         </div>
@@ -72,12 +73,35 @@ data-aria-dark="切换到自动模式">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>该页内容</h3><ul>
+<li><a class="reference internal" href="#packages">Packages</a><ul>
 <li><a class="reference internal" href="#tmux">tmux</a></li>
 <li><a class="reference internal" href="#blkid">blkid</a></li>
 <li><a class="reference internal" href="#htop">htop</a></li>
 <li><a class="reference internal" href="#config-package-attr">CONFIG_PACKAGE_attr</a></li>
 <li><a class="reference internal" href="#msd-lite">msd_lite</a></li>
 </ul>
+</li>
+</ul>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/eze-root/JDC-Arthur"
+  data-type="github" data-user="eze-root" data-repo="JDC-Arthur">
+  <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </span>
+  <span class="flex-grow px-2 break-all">
+    <span>eze-root/JDC-Arthur</span>
+    <span class="flex text-sm repo-stats-count">
+      <span class="flex items-center pr-3">
+        <iconify-icon icon="lucide:star"></iconify-icon>
+        <strong class="js-repo-stars ml-1">0</strong>
+      </span>
+      <span class="flex items-center">
+        <iconify-icon icon="lucide:git-fork"></iconify-icon>
+        <strong class="js-repo-forks ml-1">0</strong>
+      </span>
+    </span>
+  </span>
+</a><div class="edit-this-page">
+  <a href="https://github.com/eze-root/JDC-Arthur/blob/master/docs/devs/openwrt.md">编辑此页面</a>
 </div><div id="ethical-ad-placement" data-ea-publisher="readthedocs"></div></div>
   </aside>
   <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
@@ -89,11 +113,11 @@ data-aria-dark="切换到自动模式">
       </button>
     </div>
     <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <a itemprop="item" href="../index.html"><span itemprop="name">JDC1800PRO</span></a>
+        <a itemprop="item" href="../index.html"><span itemprop="name">JDC-Arthur</span></a>
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">Packages</strong>
+        <strong itemprop="name">Openwrt固件定制</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -106,25 +130,30 @@ data-aria-dark="切换到自动模式">
 </div><div class="flex flex-col break-words justify-between">
       <div class="min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
         <article class="yue" role="main">
-          <section id="packages">
-<h1>Packages<a class="headerlink" href="#packages" title="Link to this heading">¶</a></h1>
+          <section class="tex2jax_ignore mathjax_ignore" id="openwrt">
+<h1>Openwrt固件定制<a class="headerlink" href="#openwrt" title="Link to this heading">¶</a></h1>
+<p>观察了多个使用Github Action进行固件定制的项目。</p>
+<p>主要的项目都基于 <a class="reference external" href="https://github.com/P3TERX/Actions-OpenWrt">P3TERX</a>。</p>
+<section id="packages">
+<h2>Packages<a class="headerlink" href="#packages" title="Link to this heading">¶</a></h2>
 <section id="tmux">
-<h2>tmux<a class="headerlink" href="#tmux" title="Link to this heading">¶</a></h2>
+<h3>tmux<a class="headerlink" href="#tmux" title="Link to this heading">¶</a></h3>
 <p>tmux is a terminal multiplexer. It lets you switch easily between several programs in one terminal, detach them (they keep running in the background)</p>
 </section>
 <section id="blkid">
-<h2>blkid<a class="headerlink" href="#blkid" title="Link to this heading">¶</a></h2>
+<h3>blkid<a class="headerlink" href="#blkid" title="Link to this heading">¶</a></h3>
 <p>blkid 命令是一个命令行工具，它可以显示关于可用块设备的信息。它可以识别一个块设备内容的类型</p>
 </section>
 <section id="htop">
-<h2>htop<a class="headerlink" href="#htop" title="Link to this heading">¶</a></h2>
+<h3>htop<a class="headerlink" href="#htop" title="Link to this heading">¶</a></h3>
 </section>
 <section id="config-package-attr">
-<h2>CONFIG_PACKAGE_attr<a class="headerlink" href="#config-package-attr" title="Link to this heading">¶</a></h2>
+<h3>CONFIG_PACKAGE_attr<a class="headerlink" href="#config-package-attr" title="Link to this heading">¶</a></h3>
 </section>
 <section id="msd-lite">
-<h2>msd_lite<a class="headerlink" href="#msd-lite" title="Link to this heading">¶</a></h2>
+<h3>msd_lite<a class="headerlink" href="#msd-lite" title="Link to this heading">¶</a></h3>
 <p>这个轻量级版本的多流守护程序(msd) 程序用于通过HTTP 在网络上组织IP 电视流，同udpxy一样，将udp组播转换为单播流。 没有死锁，全面采用零拷贝，不分析MPEG</p>
+</section>
 </section>
 </section>
 

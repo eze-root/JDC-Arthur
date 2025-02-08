@@ -1,6 +1,6 @@
 # Development docs for docs
 
-This link can be found [ eze-root.github.io/JDC1800PRO ](https://eze-root.github.io/JDC1800PRO/)
+This link can be found [ eze-root.github.io/JDC-Arthur ](https://eze-root.github.io/JDC-Arthur/)
 
 ## How to contribute
 
