@@ -14,5 +14,6 @@ Or using markdown is OK!
    :maxdepth: 2
    :caption: Contents:
 
-   devs/dev.md
+   devs/tutorial.md
    devs/intro.md
+   devs/dev.md
