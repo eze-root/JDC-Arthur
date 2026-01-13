@@ -24,6 +24,8 @@ start_service() {
 
 stop_service() {
     service_stop $PROG
+    # Ensure firewall rules are cleaned up so we fall back to direct connection
+    sh /etc/sbox/sbox_tproxy_stop.sh
     echo "sing-box is stopped!"
 }
 

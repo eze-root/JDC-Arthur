@@ -5,7 +5,7 @@
 # 0 1 * * * sh /etc/sbox/sbox_tproxy.sh
 #
 # Every 5 min run
-# */5 * * * * sh /etc/sbox/sbox_tproxy.sh
+*/5 * * * * sh /etc/sbox/sbox_tproxy.sh
 
 # Every 5 min run
 # */5 * * * * sh /etc/frp-client/frp-client.sh
