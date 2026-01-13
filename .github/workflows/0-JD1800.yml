@@ -8,7 +8,7 @@ on:
 
 env:
   REPO_URL: https://github.com/LiBwrt/openwrt-6.x.git
-  REPO_BRANCH: k6.12-nss
+  REPO_BRANCH: main-nss
   CONFIG_FILE: configs/0-jd1800.config
   DIY_SCRIPT: diy-jd1800.sh
   CLASH_KERNEL: amd64
