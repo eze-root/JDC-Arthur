@@ -2,18 +2,28 @@
 # sing-box monitor
 
 SERVICE_NAME="sing-box"
+uci_get() {
+    uci -q get "singbox.main.$1"
+}
+
 # Use persistent storage in /etc/sbox (JFFS2 partition)
-SBOX_DIR="/etc/sbox"
-SBOX_PATH="$SBOX_DIR/sing-box"
-SBOX_CONFIG_PATH="$SBOX_DIR/config.json"
+SBOX_DIR="$(uci_get sbox_dir)"
+[ -n "$SBOX_DIR" ] || SBOX_DIR="/etc/sbox"
+
+SBOX_PATH="$(uci_get bin_path)"
+[ -n "$SBOX_PATH" ] || SBOX_PATH="$SBOX_DIR/sing-box"
+
+SBOX_CONFIG_PATH="$(uci_get config_path)"
+[ -n "$SBOX_CONFIG_PATH" ] || SBOX_CONFIG_PATH="$SBOX_DIR/config.json"
 SBOX_CONFIG_PATH_NEW="$SBOX_DIR/config-new.json"
 
 # URLs to download binary/config (Leave empty to use local files only)
-SBOX_URL=""
-SBOX_CONFIG_URL=""
+SBOX_URL="$(uci_get bin_url)"
+SBOX_CONFIG_URL="$(uci_get config_url)"
 
 # Network check URL (e.g. baidu.com)
-CHECK_URL="https://www.baidu.com"
+CHECK_URL="$(uci_get check_url)"
+[ -n "$CHECK_URL" ] || CHECK_URL="https://www.baidu.com"
 
 timestamp() {
     date '+%Y-%m-%d %H:%M:%S'
@@ -29,6 +39,14 @@ check_network() {
 }
 
 mkdir -p $SBOX_DIR
+
+ENABLED="$(uci_get enabled)"
+if [ "$ENABLED" != "1" ]; then
+    if pgrep -f "${SERVICE_NAME}" > /dev/null; then
+        /etc/init.d/${SERVICE_NAME} stop
+    fi
+    exit 0
+fi
 
 # 1. Check Network Connectivity
 if ! check_network; then

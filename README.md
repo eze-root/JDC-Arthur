@@ -28,6 +28,12 @@
 | :-------------: | :-------------: | :-------------: | :-------------: |
 | [![](https://img.shields.io/badge/JDC--Arthur-JD1800-32C955.svg?logo=openwrt)](https://github.com/eze-root/JDC-Arthur/blob/main/.github/workflows/0-JD1800.yml) | [![](https://github.com/eze-root/JDC-Arthur/actions/workflows/0-JD1800.yml/badge.svg)](https://github.com/eze-root/JDC-Arthur/actions/workflows/0-JD1800.yml) | [![](https://img.shields.io/badge/编译-配置-orange.svg?logo=apache-spark)](https://github.com/eze-root/JDC-Arthur/blob/main/configs/0-jd1800.config) | [![](https://img.shields.io/badge/下载-链接-blueviolet.svg?logo=hack-the-box)](https://github.com/eze-root/JDC-Arthur/releases/IPQ60XX-JD1800-6.12-WIFI) |
 
+## 新增：Wi-Fi 上联 + Sing-box TProxy 固件
+
+- 配置文件：`configs/0-jd1800-tproxy.config`
+- 说明文档：`docs/devs/singbox-tproxy.md`
+- 适用场景：路由器接入上游 Wi-Fi（STA），本机开启 AP 下发，所有 LAN 客户端流量走 sing-box 透明代理
+
 ## 快速上手指导 [![](https://img.shields.io/badge/-使用指南-FFFFFF.svg)](#快速上手指导-)
 1. **Fork 本项目**：点击右上角 Fork 按钮。
 2. **自定义脚本**：修改 `diy-jd1800.sh` 可在编译时自动集成特定的插件或配置。

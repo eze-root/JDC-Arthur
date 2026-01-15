@@ -17,3 +17,4 @@ Or using markdown is OK!
    devs/tutorial.md
    devs/intro.md
    devs/dev.md
+   devs/singbox-tproxy.md
