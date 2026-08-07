@@ -1,18 +1,5 @@
-sphinx
-sphinxemoji
-sphinx_design
-sphinx-copybutton
-sphinxcontrib-bibtex
-sphinxcontrib-mermaid
-sphinx-comments
-
-myst-parser[linkify]
-
-# theme
+sphinx>=8,<10
+myst-parser[linkify]>=4,<6
 shibuya
-
-# 
-# ablog
-
-
-aiohttp
+sphinx-design
+sphinx-copybutton

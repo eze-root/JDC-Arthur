@@ -1,0 +1,47 @@
+.release-downloads {
+  display: grid;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.release-card {
+  border: 1px solid var(--sy-c-border, #d8dee4);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.release-card h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.25rem;
+}
+
+.release-date,
+.download-meta {
+  color: var(--sy-c-text-weak, #57606a);
+  font-size: 0.85rem;
+}
+
+.asset-list {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.asset-list li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  justify-content: space-between;
+}
+
+.download-button {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.release-error {
+  color: #cf222e;
+}

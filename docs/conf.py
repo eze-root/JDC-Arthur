@@ -16,17 +16,10 @@ release = '0.0.1'
 
 extensions = [
   "myst_parser",
-  "sphinx.ext.autodoc",
-  "sphinx.ext.intersphinx",
   "sphinx.ext.extlinks",
   "sphinx.ext.todo",
-  "sphinx.ext.viewcode",
   "sphinx_design",
-  "sphinx_comments",
   "sphinx_copybutton",
-  "sphinxcontrib.bibtex",
-  "sphinxcontrib.mermaid",
-  "sphinxemoji.sphinxemoji",
 ]
 
 html_context = {
@@ -36,10 +29,11 @@ html_context = {
 }
 
 html_css_files = [
- "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css"
+ "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css",
+ "downloads.css",
 ]
 
-bibtex_bibfiles = ['refs.bib']
+html_js_files = ["releases.js"]
 
 myst_enable_extensions=[
     "amsmath",
@@ -60,14 +54,6 @@ myst_enable_extensions=[
 
 myst_words_per_minute = 10
 
-comments_config = {
-   # "utterances": {
-   #    "repo": "EZEORG/dev_zero_to_hero",
-   #    "optional": "config",
-   # }
-}
-
-
 templates_path = ['_templates']
 exclude_patterns = ['build', 'Thumbs.db', '.DS_Store']
 
@@ -78,5 +64,3 @@ language = 'zh'
 
 html_theme = 'shibuya'
 html_static_path = ['_static']
-
-

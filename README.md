@@ -28,6 +28,10 @@
 | :-------------: | :-------------: | :-------------: | :-------------: |
 | [![](https://img.shields.io/badge/JDC--Arthur-JD1800-32C955.svg?logo=openwrt)](https://github.com/eze-root/JDC-Arthur/blob/main/.github/workflows/0-JD1800.yml) | [![](https://github.com/eze-root/JDC-Arthur/actions/workflows/0-JD1800.yml/badge.svg)](https://github.com/eze-root/JDC-Arthur/actions/workflows/0-JD1800.yml) | [![](https://img.shields.io/badge/编译-配置-orange.svg?logo=apache-spark)](https://github.com/eze-root/JDC-Arthur/blob/main/configs/0-jd1800.config) | [![](https://img.shields.io/badge/下载-链接-blueviolet.svg?logo=hack-the-box)](https://github.com/eze-root/JDC-Arthur/releases/IPQ60XX-JD1800-6.12-WIFI) |
 
+- [在线文档](https://eze-root.github.io/JDC-Arthur/)
+- [固件直接下载页](https://eze-root.github.io/JDC-Arthur/downloads.html)
+- [改进记录](https://eze-root.github.io/JDC-Arthur/devs/changelog.html)
+
 ## 新增：Wi-Fi 上联 + Sing-box TProxy 固件
 
 - 配置文件：`configs/0-jd1800-tproxy.config`

@@ -1,20 +1,21 @@
+JDC-Arthur 文档
+===============
 
-
-DevLogs
-=======
-
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
-Or using markdown is OK!
-
+这里集中提供亚瑟固件的使用说明、维护记录和编译产物下载入口。
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: 使用与下载
 
+   downloads.md
    devs/tutorial.md
    devs/intro.md
-   devs/dev.md
    devs/singbox-tproxy.md
+
+.. toctree::
+   :maxdepth: 2
+   :caption: 开发与维护
+
+   devs/changelog.md
+   devs/maintenance.md
+   devs/dev.md
