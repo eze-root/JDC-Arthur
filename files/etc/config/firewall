@@ -15,7 +15,7 @@ config zone
         option name 'wan'
         list network 'wan'
         list network 'wan6'
-        option input 'ACCEPT'
+        option input 'REJECT'
         option output 'ACCEPT'
         option forward 'REJECT'
         option masq '1'
@@ -117,22 +117,3 @@ config rule
         option dest_port '500'
         option proto 'udp'
         option target 'ACCEPT'
-
-config zone
-        option name 'proxy'
-        option forward 'REJECT'
-        option output 'ACCEPT'
-        option input 'ACCEPT'
-        option mtu_fix '1'
-        list network 'proxy'
-        list device 'tun0'
-
-config forwarding
-        option name 'lan-proxy'
-        option dest 'proxy'
-        option src 'lan'
-
-config forwarding
-        option src 'proxy'
-        option dest 'wan'
-

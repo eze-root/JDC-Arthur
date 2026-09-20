@@ -1,0 +1,5 @@
+#!/bin/sh
+# Register both one-shot configuration updates and the core service.
+/etc/init.d/sing-box-update enable
+/etc/init.d/sing-box enable
+exit 0

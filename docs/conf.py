@@ -39,7 +39,7 @@ html_css_files = [
  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css"
 ]
 
-bibtex_bibfiles = ['refs.bib']
+bibtex_bibfiles = []
 
 myst_enable_extensions=[
     "amsmath",
@@ -68,15 +68,15 @@ comments_config = {
 }
 
 
-templates_path = ['_templates']
+templates_path = []
 exclude_patterns = ['build', 'Thumbs.db', '.DS_Store']
 
-language = 'zh'
+language = 'zh_CN'
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'shibuya'
-html_static_path = ['_static']
+html_static_path = []
 
 

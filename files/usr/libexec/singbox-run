@@ -1,0 +1,96 @@
+#!/bin/sh
+# procd owns this foreground wrapper; the wrapper owns the core and TProxy rules.
+. /usr/lib/singbox/common.sh
+sbox_load
+/etc/sbox/sbox_tproxy_stop.sh || exit 1
+sbox_validate && sbox_check || exit 1
+
+child=
+cleanup() {
+    trap '' INT TERM
+    # Stop intercepting before waiting for the core to shut down.
+    [ "$MODE" != tproxy ] || /etc/sbox/sbox_tproxy_stop.sh
+    if [ -n "$child" ]; then
+        kill "$child" 2>/dev/null
+        attempts=0
+        while kill -0 "$child" 2>/dev/null && [ "$attempts" -lt 10 ]; do
+            sleep 1
+            attempts=$((attempts + 1))
+        done
+        kill -KILL "$child" 2>/dev/null
+        wait "$child" 2>/dev/null
+    fi
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+
+listener_owned() {
+    family=$1
+    protocol=$2
+    listen_port=$3
+    owner_pid=$4
+    if command -v ss >/dev/null 2>&1; then
+        if [ "$protocol" = tcp ]; then
+            ss -H "-$family" -lntp "sport = :$listen_port" | grep -q "pid=$owner_pid,"
+        else
+            ss -H "-$family" -lnup "sport = :$listen_port" | grep -q "pid=$owner_pid,"
+        fi
+        return
+    fi
+    # Some vendor images label ip-full as installed but omit ss, while their
+    # BusyBox netstat also hides IPv6 sockets. Match /proc socket inodes back
+    # to this child so an unrelated or stale listener cannot pass readiness.
+    hex_port=$(printf '%04X' "$listen_port") || return 1
+    case "$family:$protocol" in
+        4:tcp) socket_file=/proc/net/tcp; socket_state=0A ;;
+        4:udp) socket_file=/proc/net/udp; socket_state=07 ;;
+        6:tcp) socket_file=/proc/net/tcp6; socket_state=0A ;;
+        6:udp) socket_file=/proc/net/udp6; socket_state=07 ;;
+        *) return 1 ;;
+    esac
+    [ -r "$socket_file" ] || return 1
+    for inode in $(awk -v port="$hex_port" -v state="$socket_state" '
+        toupper($2) ~ ":" port "$" && $4 == state { print $10 }
+    ' "$socket_file"); do
+        for descriptor in /proc/"$owner_pid"/fd/*; do
+            [ "$(readlink "$descriptor" 2>/dev/null)" = "socket:[$inode]" ] && return 0
+        done
+    done
+    return 1
+}
+
+if [ "$MODE" = tproxy ]; then
+    command -v nft >/dev/null || exit 1
+    command -v ss >/dev/null 2>&1 || [ -r /proc/net/tcp ] || exit 1
+    /etc/sbox/sbox_tproxy_stop.sh || exit 1
+fi
+
+"$PROG" run -D "$WORKDIR" -c "$CONF" &
+child=$!
+
+if [ "$MODE" = tproxy ]; then
+    # Both TCP and UDP must belong to THIS core, not an unrelated listener.
+    ready=0
+    attempts=0
+    while [ "$attempts" -lt 15 ] && kill -0 "$child" 2>/dev/null; do
+        if listener_owned 4 tcp "$PORT" "$child" &&
+           listener_owned 4 udp "$PORT" "$child"; then
+            if [ "$CLIENT_IPV6" = 0 ] || {
+                listener_owned 6 tcp "$PORT6" "$child" &&
+                listener_owned 6 udp "$PORT6" "$child";
+            }; then
+                ready=1
+                break
+            fi
+        fi
+        sleep 1
+        attempts=$((attempts + 1))
+    done
+    [ "$ready" = 1 ] || { sbox_error 'TCP/UDP TProxy listeners not ready'; exit 1; }
+    /etc/sbox/sbox_tproxy_start.sh || exit 1
+fi
+
+wait "$child"
+result=$?
+child=
+exit "$result"

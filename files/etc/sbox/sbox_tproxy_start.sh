@@ -1,94 +1,82 @@
 #!/bin/sh
+# Called by singbox-run only after the core is listening.
+. /usr/lib/singbox/common.sh
+sbox_load
+sbox_validate || exit 1
+[ "$MODE" = tproxy ] || exit 0
 
-. /lib/functions.sh
-
-timestamp() {
-    date +"%Y-%m-%d %H:%M:%S"
+umask 077
+STATE=/var/run/singbox-tproxy.state
+[ ! -e "$STATE" ] || { sbox_error 'TProxy state already exists'; exit 1; }
+nft list table inet singbox_tproxy >/dev/null 2>&1 && {
+    sbox_error 'TProxy table already exists'; exit 1;
 }
+for iface in $LAN_IFNAMES; do
+    ip link show dev "$iface" >/dev/null 2>&1 || exit 1
+done
+# Refuse to occupy another application's policy routing resources.
+if [ -n "$(ip -4 route show table "$TABLE" 2>/dev/null)" ] ||
+   ip -4 rule show | grep -Eq "^$PRIORITY:|lookup $TABLE( |$)"; then
+    sbox_error 'Policy table or rule priority is in use'
+    exit 1
+fi
+if [ "$CLIENT_IPV6" = 1 ] && {
+    [ -n "$(ip -6 route show table "$TABLE" 2>/dev/null)" ] ||
+    ip -6 rule show | grep -Eq "^$PRIORITY:|lookup $TABLE( |$)";
+}; then
+    sbox_error 'IPv6 policy table or rule priority is in use'
+    exit 1
+fi
 
-error_exit() {
-    echo "$(timestamp) Error: $1" >&2
-    exit "${2:-1}"
-}
-
-config_load singbox
-config_get TPROXY_PORT main tproxy_port 9898
-config_get PROXY_FWMARK main fwmark 1
-config_get PROXY_ROUTE_TABLE main route_table 100
-config_get LAN_IFNAMES main lan_ifnames "br-lan"
-config_get PROXY_ROUTER main proxy_router 0
-
-LAN_IF_SET=$(printf '%s' "$LAN_IFNAMES" | awk '{for (i=1;i<=NF;i++) {printf "\"%s\"%s", $i, (i<NF?", ":"")}}')
-[ -n "$LAN_IF_SET" ] || LAN_IF_SET="\"br-lan\""
-
-OUTPUT_RULES=""
-if [ "$PROXY_ROUTER" = "1" ]; then
-    OUTPUT_RULES="$(cat <<EOF
-        # Bypass marked traffic
-        meta mark $PROXY_FWMARK accept
-        # Make sure DNS work
-        meta l4proto { tcp, udp } th dport 53 meta mark set $PROXY_FWMARK accept
-        # Bypass local traffic
-        ip daddr { 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept
-        # Bypass DNAT
-        ct status dnat accept comment "Allow forwarded traffic"
-        # Mark others to Tproxy
-        meta l4proto { tcp, udp } meta mark set $PROXY_FWMARK accept
+rules=$(mktemp /tmp/singbox-nft.XXXXXX) || exit 1
+trap 'rm -f "$rules"' EXIT
+interfaces=$(printf '%s\n' "$LAN_IFNAMES" | awk '{for(i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?", ":""), $i}')
+ipv6_rules=
+if [ "$CLIENT_IPV6" = 1 ]; then
+    ipv6_rules="$(cat <<EOF
+        udp dport { 546, 547 } return
+        ip6 daddr { ::/128, ::1/128, fc00::/7, fe80::/10, ff00::/8 } return
+        meta l4proto { tcp, udp } th dport 53 tproxy ip6 to [::1]:$PORT6 meta mark set $MARK accept
+        fib daddr type local return
+        meta l4proto { tcp, udp } tproxy ip6 to [::1]:$PORT6 meta mark set $MARK accept
 EOF
 )"
+else
+    ipv6_rules='        meta nfproto ipv6 return'
 fi
-
-
-echo "$(date) Creating firewall..."
-cat > /etc/nftables.d/99-singbox.nft << EOF
-#!/usr/sbin/nft -f
-
-add table inet sing-box
-
-# Create new chain
-add chain inet sing-box prerouting { type filter hook prerouting priority mangle; policy accept; }
-add chain inet sing-box output { type route hook output priority mangle; policy accept; }
-
-# Add rules
-table inet sing-box {
+cat > "$rules" <<EOF
+table inet singbox_tproxy {
     chain prerouting {
-        meta nfproto ipv6 accept
-        iifname != { $LAN_IF_SET } accept comment "Bypass non-LAN"
-        # Make sure DHCP is not filter by UDP 67/68
-        udp dport { 67, 68 } accept comment "Allow DHCP traffic"
-        # Make sure DNS and TProxy work
-        meta l4proto { tcp, udp } th dport 53 tproxy to :$TPROXY_PORT meta mark set $PROXY_FWMARK accept comment "DNS Transparent Proxy"
-        fib daddr type local meta l4proto { tcp, udp } th dport $TPROXY_PORT reject
-        fib daddr type local accept
-        # Bypass local Networks
-        ip daddr { 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept
-        # Bypass DNAT
-        ct status dnat accept comment "Allow forwarded traffic"
-        # Mark others to Tproxy
-        meta l4proto { tcp, udp } tproxy to :$TPROXY_PORT meta mark set $PROXY_FWMARK accept
-        meta l4proto { tcp, udp } th dport { 80, 443 } tproxy to :$TPROXY_PORT meta mark set $PROXY_FWMARK accept
-    }
-
-    chain output {
-        meta nfproto ipv6 accept
-$OUTPUT_RULES
+        type filter hook prerouting priority mangle; policy accept;
+        iifname != { $interfaces } return
+        udp dport { 67, 68 } return
+        ct status dnat return
+        meta nfproto ipv4 ip daddr { 0.0.0.0/8, 127.0.0.0/8, 169.254.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } return
+        meta nfproto ipv4 fib daddr type broadcast return
+        meta nfproto ipv4 meta l4proto { tcp, udp } th dport 53 tproxy ip to 127.0.0.1:$PORT meta mark set $MARK accept
+        meta nfproto ipv4 fib daddr type local return
+        meta nfproto ipv4 ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 } return
+        meta nfproto ipv4 meta l4proto { tcp, udp } tproxy ip to 127.0.0.1:$PORT meta mark set $MARK accept
+$ipv6_rules
     }
 }
 EOF
-
-# Set privilege for nft
-chmod 644 /etc/nftables.d/99-singbox.nft
-
-# Apply firewall rules
-if ! nft -f /etc/nftables.d/99-singbox.nft; then
-    error_exit "Apply firewall failure"
+nft -c -f "$rules" || exit 1
+# Save ownership before adding routes. Stop uses this even after a UCI edit.
+printf '%s %s %s\n' "$MARK" "$TABLE" "$PRIORITY" > "$STATE" || exit 1
+if ! ip -4 route add local default dev lo table "$TABLE" ||
+   ! ip -4 rule add pref "$PRIORITY" fwmark "$MARK/0xffffffff" lookup "$TABLE"; then
+    /etc/sbox/sbox_tproxy_stop.sh
+    exit 1
 fi
-
-ip rule del table $PROXY_ROUTE_TABLE >/dev/null 2>&1
-ip rule add fwmark $PROXY_FWMARK table $PROXY_ROUTE_TABLE
-
-ip route flush table $PROXY_ROUTE_TABLE >/dev/null 2>&1
-ip route add local default dev lo table $PROXY_ROUTE_TABLE
-
-
-echo "$(date) Ready for sing-box"
+if [ "$CLIENT_IPV6" = 1 ]; then
+    if ! ip -6 route add local default dev lo table "$TABLE" ||
+       ! ip -6 rule add pref "$PRIORITY" fwmark "$MARK/0xffffffff" lookup "$TABLE"; then
+        /etc/sbox/sbox_tproxy_stop.sh
+        exit 1
+    fi
+fi
+if ! nft -f "$rules"; then
+    /etc/sbox/sbox_tproxy_stop.sh
+    exit 1
+fi

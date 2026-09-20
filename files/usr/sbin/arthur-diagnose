@@ -1,0 +1,38 @@
+#!/bin/sh
+# Read-only inventory. No JSON config, subscription URL, password or full UCI dump.
+section() { printf '\n== %s ==\n' "$1"; }
+section 'Board / firmware'
+ubus call system board
+uname -m
+section 'Memory / uptime'
+uptime
+free -m
+section 'Storage (no writes, mounts or partition changes)'
+cat /proc/partitions
+cat /proc/mounts
+df -h
+command -v lsblk >/dev/null && lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT
+command -v block >/dev/null && block info
+section 'Watchdog (read only)'
+ubus call system watchdog
+for item in /sys/class/watchdog/watchdog*/identity /sys/class/watchdog/watchdog*/timeout /sys/class/watchdog/watchdog*/bootstatus; do
+    [ -f "$item" ] && printf '%s: %s\n' "$item" "$(cat "$item")"
+done
+section 'LAN link / listeners'
+ip -br link
+ip -4 addr show dev br-lan
+ss -lntu
+section 'sing-box build / service'
+prog=$(uci -q get singbox.main.bin_path)
+[ -n "$prog" ] || prog=/usr/bin/sing-box
+[ ! -x "$prog" ] || "$prog" version
+[ ! -x /etc/init.d/sing-box ] || /etc/init.d/sing-box status
+section 'Acceleration / own firewall state'
+uci -q get firewall.@defaults[0].flow_offloading
+uci -q get firewall.@defaults[0].flow_offloading_hw
+nft list table inet singbox_tproxy 2>/dev/null
+ip -4 rule show
+ip -6 rule show
+section 'Recent kernel health signals'
+dmesg | grep -Ei 'out of memory|oom-kill|watchdog|thermal|mmc.*error|I/O error' | tail -n 30
+exit 0

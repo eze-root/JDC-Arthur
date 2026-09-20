@@ -1,45 +1,43 @@
-<img width="768" src="https://github.com/openwrt/openwrt/blob/main/include/logo.png"/>
+# JDC-Arthur：京东云亚瑟 OpenWrt 固件
 
-## 特别提示 [![](https://img.shields.io/badge/-个人免责声明-FFFFFF.svg)](#特别提示-)
+本项目为 **JDCloud RE-SS-01（亚瑟 / AX1800 Pro）** 定制 LiBwrt/OpenWrt。当前构建源为 `LiBwrt/LibWrt:25.12-nss`，目标为 `qualcommax/ipq60xx`、设备 `jdcloud_re-ss-01`，不适用于其他京东云型号。
 
-- **⚠️ 硬件限制：本固件仅适用于京东云无线宝-亚瑟 (JDC-AX1800 Pro / JDCloud RE-SP-01B)，请勿尝试在其他型号（如鲁班、雅典娜等）或品牌上刷入，否则可能导致设备损坏（变砖）！**
-- **本人不对任何人因使用本固件所遭受的任何理论或实际的损失承担责任！**
-- **本固件主要用于 Lab 环境的网络拓扑实验与路由配置研究。**
-- **本固件禁止用于任何商业用途，请务必严格遵守国家互联网使用相关法律规定！**
+共同默认值：LAN 管理地址 `192.168.1.1`，WAN 使用 DHCP，LuCI 保留 PPPoE 配置入口但不默认拨号。WAN 入站默认拒绝，管理入口只放在 LAN。全新、不保留配置的安装可直接从有线 LAN 获取 DHCP；无线驱动和配置页已包含，但不会发布一个人人都知道的默认 Wi-Fi 密码，首次登录后需自行设置 SSID/密码并启用无线。私人节点、订阅 URL、证书和 JSON 不进入源码或公开固件。
 
-## 项目说明 [![](https://img.shields.io/badge/-项目基本介绍-FFFFFF.svg)](#项目说明-)
-- **核心目标**：提供一个针对亚瑟硬件深度优化的 OpenWrt 固件，方便在实验室环境中进行透明代理测试、IPv6 网络实验以及高性能路由转发。
-- **固件信息**：
-    - 默认管理地址：`192.168.1.1`
-    - 默认登录用户：`root`
-    - 默认登录密码：`password`
-- **源码参考**：
-    - [LiBwrt](https://github.com/LiBwrt-op/openwrt-6.x) (内核 6.12 + NSS 加速支持)
-    - [immortalwrt](https://github.com/immortalwrt/immortalwrt)
+## 三套固件
 
-## 固件功能特点 [![](https://img.shields.io/badge/-特色功能-FFFFFF.svg)](#固件功能特点-)
-- **WAN 口访问**：默认开启 WAN 口入站访问，方便从上级网络管理路由器。
-- **IPv6 支持**：预装 `ipv6helper`，支持自动配置 IPv6 网络环境。
-- **高性能转发**：基于 NSS 驱动，支持有线全双工线速转发。
-- **实验环境友好**：集成自动化配置脚本框架，支持从本地持久化存储加载实验配置。
+| 固件 | 发布标签 | 客户端网络 | sing-box |
+| --- | --- | --- | --- |
+| 基础版 | `IPQ60XX-JD1800-6.12-WIFI` | DHCPv4 + IPv6；有前缀时下发前缀，否则尝试 RA/DHCPv6/NDP relay | 不包含 |
+| sing-box IPv4 客户端版 | `IPQ60XX-JD1800-6.12-SINGBOX-IPV4` | 客户端只使用 IPv4；路由器自身仍保留 IPv4/IPv6，可连接 IPv6-only 节点 | IPv4 TCP/UDP TProxy |
+| sing-box 双栈客户端版 | `IPQ60XX-JD1800-6.12-SINGBOX-DUALSTACK` | 客户端 IPv4/IPv6 | IPv4 和 IPv6 TCP/UDP TProxy |
 
-## 固件编译 [![](https://img.shields.io/badge/-GitHub_Actions-FFFFFF.svg)](#固件编译-)
-| 平台+设备名称 | 固件编译状态 | 配置文件 | 固件下载 |
-| :-------------: | :-------------: | :-------------: | :-------------: |
-| [![](https://img.shields.io/badge/JDC--Arthur-JD1800-32C955.svg?logo=openwrt)](https://github.com/eze-root/JDC-Arthur/blob/main/.github/workflows/0-JD1800.yml) | [![](https://github.com/eze-root/JDC-Arthur/actions/workflows/0-JD1800.yml/badge.svg)](https://github.com/eze-root/JDC-Arthur/actions/workflows/0-JD1800.yml) | [![](https://img.shields.io/badge/编译-配置-orange.svg?logo=apache-spark)](https://github.com/eze-root/JDC-Arthur/blob/main/configs/0-jd1800.config) | [![](https://img.shields.io/badge/下载-链接-blueviolet.svg?logo=hack-the-box)](https://github.com/eze-root/JDC-Arthur/releases/IPQ60XX-JD1800-6.12-WIFI) |
+两套代理固件默认启用一个**直连配置**。CI 固定下载并校验 SagerNet 官方 `v1.13.21` 的 OpenWrt 核心，首次启动后从 `/mnt/mmcblk0p27/sing-box/bin/sing-box` 运行；活动配置和状态也保存在该数据分区。
 
-## 新增：Wi-Fi 上联 + Sing-box TProxy 固件
+可在刷机后设置 HTTPS 配置 URL。开机更新器会等待网络、限时重试、用当前核心检查 JSON、原子替换并重启；启动失败会恢复旧配置。也可以通过 SCP 上传 JSON 后用 `singbox-install-config` 导入。具体命令见 [sing-box 配置与恢复](docs/devs/singbox-tproxy.md)。
 
-- 配置文件：`configs/0-jd1800-tproxy.config`
-- 说明文档：`docs/devs/singbox-tproxy.md`
-- 适用场景：路由器接入上游 Wi-Fi（STA），本机开启 AP 下发，所有 LAN 客户端流量走 sing-box 透明代理
+## 编译入口
 
-## 快速上手指导 [![](https://img.shields.io/badge/-使用指南-FFFFFF.svg)](#快速上手指导-)
-1. **Fork 本项目**：点击右上角 Fork 按钮。
-2. **自定义脚本**：修改 `diy-jd1800.sh` 可在编译时自动集成特定的插件或配置。
-3. **手动触发**：在仓库的 `Actions` 选项卡中选择 `JDC1800-6.12-WIFI` 并点击 `Run workflow`。
-4. **获取固件**：编译完成后，在 [Releases](https://github.com/eze-root/JDC-Arthur/releases) 中下载生成的固件镜像。
+| GitHub Actions 工作流 | 配置 | 产物 |
+| --- | --- | --- |
+| `JDC1800-6.12-WIFI` | `configs/0-jd1800.config` | 基础版 |
+| `JDC1800-6.12-WIFI-SINGBOX` | `configs/0-jd1800-tproxy.config` | matrix 同时构建 IPv4 客户端版和双栈客户端版 |
 
-<a href="#readme">
-<img src="https://img.shields.io/badge/-返回顶部-FFFFFF.svg" title="返回顶部" align="right"/>
-</a>
+在 [Actions](https://github.com/eze-root/JDC-Arthur/actions) 手动运行对应工作流；默认从该次运行的 Artifacts 下载固件和 `sha256sums`。只有在手动运行时勾选 `publish_release`，构建才会同步发布到 [Releases](https://github.com/eze-root/JDC-Arthur/releases)。源码及 feeds 跟随上游分支，不同日期构建可能使用不同版本；产物中的 `source-commit.txt`、`build.config` 和 `sing-box-core.txt` 用于追溯。
+
+本地回归检查：
+
+```sh
+node --test tests/singbox.test.mjs
+```
+
+Linux CI 还会在独立网络命名空间中检查真实 nftables 语法，并检查 Lua、构建选项和文档。完整固件编译及目标机转发仍需由工作流和实机验证。
+
+## 文档
+
+- [连接、存储、升级和实机验收](docs/devs/arthur-operations.md)
+- [sing-box 配置、更新、重启和恢复](docs/devs/singbox-tproxy.md)
+- [三个固件档位的设计记录](docs/devs/firmware-profiles-plan.md)
+- [刷机前确认与旧教程说明](docs/devs/tutorial.md)
+
+刷机前必须再次核对 `ubus call system board`、镜像类型和校验值。已经运行 OpenWrt 的设备通常只需要匹配的 sysupgrade 镜像，不需要重刷 U-Boot；优先对第一版做不保留旧配置的升级，避免旧网络、防火墙和代理规则覆盖新档位默认值。

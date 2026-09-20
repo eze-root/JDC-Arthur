@@ -1,29 +1,18 @@
 #!/bin/sh
-
-. /lib/functions.sh
-
-config_load singbox
-config_get PROXY_FWMARK main fwmark 1
-config_get PROXY_ROUTE_TABLE main route_table 100
-
-timestamp() {
-    date +"%Y-%m-%d %H:%M:%S"
-}
-
-error_exit() {
-    echo "$(timestamp) Error: $1" >&2
-    exit "${2:-1}"
-}
-
-trap 'error_exit "Script Interrupt"' INT TERM
-
-rm -f /etc/nftables.d/99-singbox.nft && echo "$(timestamp) Delete rule"
-
-nft delete table inet sing-box 2>/dev/null && echo "$(timestamp) delete sing-box table"
-
-ip rule del fwmark $PROXY_FWMARK table $PROXY_ROUTE_TABLE 2>/dev/null && echo "$(timestamp) delete rule"
-ip route flush table $PROXY_ROUTE_TABLE && echo "$(timestamp) delete rule"
-
-rm -f /tmp/sing-box/cache.db && echo "$(timestamp) clean cache"
-
-echo "$(timestamp) Uninstall for sing-box"
+# Never flush a shared route table or another application's firewall rules.
+. /usr/lib/singbox/common.sh
+STATE=/var/run/singbox-tproxy.state
+if nft list table inet singbox_tproxy >/dev/null 2>&1; then
+    nft delete table inet singbox_tproxy || exit 1
+fi
+if [ -f "$STATE" ]; then
+    read -r MARK TABLE PRIORITY < "$STATE"
+    sbox_uint "$MARK" 1 65535 && sbox_uint "$TABLE" 1 252 &&
+        sbox_uint "$PRIORITY" 1 32765 || exit 1
+    ip -4 rule del pref "$PRIORITY" fwmark "$MARK/0xffffffff" lookup "$TABLE" 2>/dev/null
+    ip -4 route del local default dev lo table "$TABLE" 2>/dev/null
+    ip -6 rule del pref "$PRIORITY" fwmark "$MARK/0xffffffff" lookup "$TABLE" 2>/dev/null
+    ip -6 route del local default dev lo table "$TABLE" 2>/dev/null
+    rm -f "$STATE"
+fi
+exit 0

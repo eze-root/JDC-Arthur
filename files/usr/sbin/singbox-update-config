@@ -1,0 +1,88 @@
+#!/bin/sh
+# Fetch, validate and atomically activate a private configuration.
+set -eu
+. /usr/lib/singbox/common.sh
+boot=0
+case "${1:-}" in
+    '') ;;
+    --boot) boot=1 ;;
+    *) echo 'Usage: singbox-update-config [--boot]' >&2; exit 2 ;;
+esac
+sbox_load
+sbox_validate || exit 1
+[ -n "$CONFIG_URL" ] || { [ "$boot" = 1 ] && exit 0; sbox_error 'Config URL is empty'; exit 1; }
+[ "$boot" = 0 ] || [ "$UPDATE_ON_BOOT" = 1 ] || exit 0
+sbox_prepare_storage || exit 1
+command -v curl >/dev/null || { sbox_error 'curl is required'; exit 1; }
+umask 077
+mkdir -p /var/lock
+lock=/var/lock/singbox-update.lock
+mkdir "$lock" 2>/dev/null || { sbox_error 'Another configuration update is in progress'; exit 1; }
+candidate=
+backup=
+cleanup() {
+    [ -z "$candidate" ] || rm -f "$candidate"
+    [ -z "$backup" ] || rm -f "$backup"
+    rmdir "$lock"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+
+attempt=1
+attempt_limit=$UPDATE_RETRIES
+[ "$boot" = 1 ] || attempt_limit=1
+while [ "$attempt" -le "$attempt_limit" ]; do
+    candidate=$(mktemp /tmp/singbox-download.XXXXXX)
+    if [ "$(date +%s)" -ge 1704067200 ] &&
+       curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+           --connect-timeout "$DOWNLOAD_TIMEOUT" --max-time "$DOWNLOAD_TIMEOUT" \
+           --max-filesize "$MAX_CONFIG_BYTES" --output "$candidate" "$CONFIG_URL"; then
+        size=$(wc -c < "$candidate")
+        if [ "$size" -ge 2 ] && [ "$size" -le "$MAX_CONFIG_BYTES" ] &&
+           "$PROG" check -D "$WORKDIR" -c "$candidate" >/dev/null 2>&1; then
+            break
+        fi
+    fi
+    rm -f "$candidate"
+    candidate=
+    [ "$attempt" -lt "$attempt_limit" ] || { sbox_error 'Configuration download or validation failed'; exit 1; }
+    sleep "$UPDATE_RETRY_DELAY"
+    attempt=$((attempt + 1))
+done
+
+backup=$(mktemp "$DATA_ROOT/config/.config-backup.XXXXXX")
+cp "$CONF" "$backup"
+chmod 600 "$backup"
+singbox-install-config "$candidate"
+rm -f "$candidate"
+candidate=
+if [ "$ENABLED" = 1 ]; then
+    if ! /etc/init.d/sing-box restart; then
+        sbox_install_file "$backup" "$CONF" 600
+        rm -f "$backup"
+        backup=
+        /etc/init.d/sing-box restart || true
+        sbox_error 'New configuration failed to restart; previous configuration was restored'
+        exit 1
+    fi
+    attempts=0
+    while [ "$attempts" -lt 20 ]; do
+        sleep 1
+        sbox_service_ready && {
+            rm -f "$backup"
+            backup=
+            echo 'Configuration updated and service restarted.'
+            exit 0
+        }
+        attempts=$((attempts + 1))
+    done
+    sbox_install_file "$backup" "$CONF" 600
+    rm -f "$backup"
+    backup=
+    /etc/init.d/sing-box restart || true
+    sbox_error 'New configuration failed to start; previous configuration was restored'
+    exit 1
+fi
+rm -f "$backup"
+backup=
+echo 'Configuration updated. The service is disabled.'

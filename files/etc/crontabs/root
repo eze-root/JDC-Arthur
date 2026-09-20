@@ -1,14 +1,2 @@
-
-
-
-## 每天1点，刷新配置
-# 0 1 * * * sh /etc/sbox/sbox_tproxy.sh
-#
-# Every 5 min run
-*/5 * * * * sh /etc/sbox/sbox_tproxy.sh
-
-# Every 5 min run
-# */5 * * * * sh /etc/frp-client/frp-client.sh
-#
-#
+# sing-box recovery is managed by procd; no periodic downloads or restarts.
 

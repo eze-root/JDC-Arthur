@@ -1,26 +1,42 @@
-name: JDC1800-6.12-WIFI-TPROXY
+name: JDC1800-6.12-WIFI-SINGBOX
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish successful builds to GitHub Releases
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
 
 env:
-  REPO_URL: https://github.com/LiBwrt/openwrt-6.x.git
-  REPO_BRANCH: main-nss
+  REPO_URL: https://github.com/LiBwrt/LibWrt.git
+  REPO_BRANCH: 25.12-nss
   CONFIG_FILE: configs/0-jd1800-tproxy.config
   DIY_SCRIPT: diy-jd1800.sh
   CLASH_KERNEL: amd64
   CACHE_TOOLCHAIN: true
   UPLOAD_BIN_DIR: false
-  FIRMWARE_RELEASE: true
-  FIRMWARE_TAG: IPQ60XX-JD1800-6.12-WIFI-TPROXY
+  FIRMWARE_RELEASE: ${{ inputs.publish_release && 'true' || 'false' }}
   TZ: Asia/Shanghai
 
 jobs:
   Build:
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: singbox-ipv4
+            tag: IPQ60XX-JD1800-6.12-SINGBOX-IPV4
+          - profile: singbox-dualstack
+            tag: IPQ60XX-JD1800-6.12-SINGBOX-DUALSTACK
+    env:
+      FIRMWARE_PROFILE: ${{ matrix.profile }}
+      FIRMWARE_TAG: ${{ matrix.tag }}
 
     steps:
     - name: Check Server Performance(检查服务器性能)
@@ -41,14 +57,16 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        docker rmi $(docker images -q)
-        sudo rm -rf /usr/share/dotnet /etc/apt/sources.list.d /usr/local/lib/android $AGENT_TOOLSDIRECTORY
-        sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
         sudo -E apt-get -y update
-        sudo -E apt-get -y install $(curl -fsSL is.gd/depends_ubuntu_2204)
-        sudo -E systemctl daemon-reload
-        sudo -E apt-get -y autoremove --purge
-        sudo -E apt-get -y clean
+        sudo -E apt-get -y install ack antlr3 asciidoc autoconf automake autopoint \
+          binutils bison build-essential bzip2 ccache cmake cpio curl \
+          device-tree-compiler fastjar flex g++-multilib gawk gcc-multilib \
+          gettext git gperf haveged help2man intltool libelf-dev libfuse-dev \
+          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev \
+          libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz msmtp \
+          nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip \
+          qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+          uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
         sudo timedatectl set-timezone "$TZ"
 
     - name: Combine Disks(合并磁盘)
@@ -89,23 +107,20 @@ jobs:
       uses: HiGarfield/cachewrtbuild@main
       with:
         ccache: false
-        mixkey: ${{ env.SOURCE_REPO }}-${{ env.REPO_BRANCH }}-${{ env.DEVICE_TARGET }}-${{ env.DEVICE_SUBTARGET }}
+        mixkey: ${{ env.SOURCE_REPO }}-${{ env.REPO_BRANCH }}-${{ env.DEVICE_TARGET }}-${{ env.DEVICE_SUBTARGET }}-${{ matrix.profile }}
         prefix: ${{ env.OPENWRT_PATH }}
 
     - name: Install Feeds(安装feeds)
       run: |
         cd $OPENWRT_PATH
         ./scripts/feeds update -a
-        git clone --depth 1 https://github.com/sbwml/openwrt_pkgs.git package/new/custom
-        mv package/new/custom/luci-app-netspeedtest  package/new
-        mv package/new/custom/speedtest-cli package/new
-        rm -rf package/new/custom
         ./scripts/feeds install -a
 
     - name: Load Custom Configuration(加载自定义配置)
       run: |
-        [ -e files ] && mv files $OPENWRT_PATH/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE $OPENWRT_PATH/.config
+        sh scripts/prepare-arthur.sh "$OPENWRT_PATH" "$FIRMWARE_PROFILE"
+        sh scripts/install-official-sing-box.sh "$OPENWRT_PATH/files"
+        cp "$CONFIG_FILE" "$OPENWRT_PATH/.config"
         chmod +x $DIY_SCRIPT
         cd $OPENWRT_PATH
         $GITHUB_WORKSPACE/$DIY_SCRIPT
@@ -114,6 +129,7 @@ jobs:
       run: |
         cd $OPENWRT_PATH
         make defconfig
+        sh "$GITHUB_WORKSPACE/scripts/check-arthur-config.sh" .config "$FIRMWARE_PROFILE" "$OPENWRT_PATH/files"
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
@@ -147,14 +163,19 @@ jobs:
         cp $OPENWRT_PATH/.config build.config
         mv -f $OPENWRT_PATH/bin/packages/*/*/*.apk packages
         tar -zcf Packages.tar.gz packages
-        rm -rf packages feeds.buildinfo version.buildinfo
+        rm -rf packages
+        git -C "$OPENWRT_PATH" rev-parse HEAD > source-commit.txt
+        cp "$GITHUB_WORKSPACE/docs/devs/singbox-tproxy.md" singbox-guide.md
+        cp "$GITHUB_WORKSPACE/docs/devs/arthur-operations.md" arthur-operations.md
+        cp "$OPENWRT_PATH/files/usr/share/singbox/core-version.txt" sing-box-core.txt
+        printf '%s\n' "$FIRMWARE_PROFILE" > firmware-profile.txt
         echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
 
     - name: Upload Firmware To Artifact(将固件上传到Artifact)
       if: steps.compile.outputs.status == 'success' && env.FIRMWARE_RELEASE != 'true'
       uses: actions/upload-artifact@main
       with:
-        name: ${{ env.SOURCE_REPO }}-firmware-${{ env.DEVICE_TARGET }}-${{ env.DEVICE_SUBTARGET }}-${{ env.FILE_DATE }}
+        name: ${{ env.SOURCE_REPO }}-firmware-${{ env.DEVICE_TARGET }}-${{ env.DEVICE_SUBTARGET }}-${{ matrix.profile }}-${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE_PATH }}
 
     - name: Upload Firmware To Release(发布固件)

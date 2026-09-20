@@ -1,0 +1,32 @@
+#!/bin/sh
+# Validate a manually uploaded private file before atomically replacing config.
+set -e
+. /usr/lib/singbox/common.sh
+[ "$#" = 1 ] || { echo 'Usage: singbox-install-config /tmp/uploaded-config.json' >&2; exit 2; }
+candidate=$1
+[ -s "$candidate" ] || { sbox_error 'Candidate missing or empty'; exit 1; }
+sbox_load
+sbox_validate || exit 1
+sbox_require_storage || exit 1
+[ -x "$PROG" ] || { sbox_error 'Binary missing'; exit 1; }
+umask 077
+mkdir -p /var/lock
+lock=/var/lock/singbox-config.lock
+mkdir "$lock" 2>/dev/null || { sbox_error 'Another config install is in progress'; exit 1; }
+pending=
+cleanup() {
+    [ -z "$pending" ] || rm -f "$pending"
+    rmdir "$lock"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+mkdir -p "$(dirname "$CONF")" "$WORKDIR"
+pending=$(mktemp "$(dirname "$CONF")/.singbox-config.XXXXXX")
+cp "$candidate" "$pending"
+chmod 600 "$pending"
+"$PROG" check -D "$WORKDIR" -c "$pending" >/dev/null 2>&1 || {
+    sbox_error 'Invalid candidate; existing configuration was preserved'; exit 1;
+}
+mv -f "$pending" "$CONF"
+pending=
+echo 'Configuration installed (0600). Enable/restart sing-box explicitly to apply.'

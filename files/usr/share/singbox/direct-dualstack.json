@@ -1,0 +1,30 @@
+{
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "tproxy",
+      "tag": "tproxy4-in",
+      "listen": "0.0.0.0",
+      "listen_port": 9898
+    },
+    {
+      "type": "tproxy",
+      "tag": "tproxy6-in",
+      "listen": "::1",
+      "listen_port": 9899
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "direct"
+  }
+}

@@ -24,7 +24,6 @@ config interface 'lan'
 config interface 'wan'
         option device 'wan'
         option proto 'dhcp'
-	option ip6assign '64'
 
 config interface 'wan6'
         option device 'wan'
@@ -32,8 +31,3 @@ config interface 'wan6'
 	option reqaddress 'try'
 	option reqprefix 'auto'
 	option norelease '1'
-
-config interface 'proxy'
-        option proto 'none'
-        option device 'tun0'
-

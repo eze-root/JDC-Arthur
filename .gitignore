@@ -1,0 +1,13 @@
+# Private post-install configuration, keys, diagnostics and backups
+.local/
+private/
+*.private.*
+*.backup
+*.tar.gz
+*.tgz
+files/etc/sbox/*
+!files/etc/sbox/*.sh
+!files/usr/share/singbox/*.json
+files/etc/sing-box/
+files/root/
+files/mnt/

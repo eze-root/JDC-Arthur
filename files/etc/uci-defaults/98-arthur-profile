@@ -1,0 +1,65 @@
+#!/bin/sh
+# Apply the selected firmware profile on first boot (including after sysupgrade).
+profile=$(cat /etc/arthur-profile 2>/dev/null)
+case "$profile" in
+    base)
+        uci set network.lan.ip6assign='60'
+        uci set dhcp.lan.ra='hybrid'
+        uci set dhcp.lan.dhcpv6='hybrid'
+        uci set dhcp.lan.ndp='hybrid'
+        uci -q batch <<'EOF'
+set dhcp.wan=dhcp
+set dhcp.wan.interface='wan'
+set dhcp.wan.ignore='1'
+set dhcp.wan.master='1'
+set dhcp.wan.ra='relay'
+set dhcp.wan.dhcpv6='relay'
+set dhcp.wan.ndp='relay'
+EOF
+        uci commit network
+        uci commit dhcp
+        ;;
+    singbox-ipv4)
+        uci set singbox.main.client_ipv6='0'
+        uci set singbox.main.direct_config='/usr/share/singbox/direct-ipv4.json'
+        uci -q delete network.lan.ip6assign
+        uci set dhcp.lan.ra='disabled'
+        uci set dhcp.lan.dhcpv6='disabled'
+        uci set dhcp.lan.ndp='disabled'
+        uci set dhcp.wan='dhcp'
+        uci set dhcp.wan.interface='wan'
+        uci set dhcp.wan.ignore='1'
+        uci -q delete dhcp.wan.master
+        uci -q delete dhcp.wan.ra
+        uci -q delete dhcp.wan.dhcpv6
+        uci -q delete dhcp.wan.ndp
+        uci commit network
+        uci commit dhcp
+        uci commit singbox
+        ;;
+    singbox-dualstack)
+        uci set singbox.main.client_ipv6='1'
+        uci set singbox.main.direct_config='/usr/share/singbox/direct-dualstack.json'
+        uci set network.lan.ip6assign='64'
+        uci set dhcp.lan.ra='hybrid'
+        uci set dhcp.lan.dhcpv6='hybrid'
+        uci set dhcp.lan.ndp='hybrid'
+        uci -q batch <<'EOF'
+set dhcp.wan=dhcp
+set dhcp.wan.interface='wan'
+set dhcp.wan.ignore='1'
+set dhcp.wan.master='1'
+set dhcp.wan.ra='relay'
+set dhcp.wan.dhcpv6='relay'
+set dhcp.wan.ndp='relay'
+EOF
+        uci commit network
+        uci commit dhcp
+        uci commit singbox
+        ;;
+    *)
+        logger -t arthur-profile "Unknown firmware profile: $profile"
+        exit 1
+        ;;
+esac
+exit 0

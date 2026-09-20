@@ -1,0 +1,66 @@
+#!/bin/sh
+# Install an already-downloaded, architecture-compatible core on the data volume.
+set -eu
+. /usr/lib/singbox/common.sh
+[ "$#" = 1 ] || { echo 'Usage: singbox-install-core /tmp/sing-box' >&2; exit 2; }
+candidate=$1
+[ -x "$candidate" ] || { sbox_error 'Candidate core is missing or not executable'; exit 1; }
+sbox_load
+sbox_validate || exit 1
+sbox_require_storage || exit 1
+"$candidate" version >/dev/null 2>&1 || { sbox_error 'Candidate core cannot run on this device'; exit 1; }
+umask 077
+mkdir -p /var/lock "$DATA_ROOT/bin"
+lock=/var/lock/singbox-core.lock
+mkdir "$lock" 2>/dev/null || { sbox_error 'Another core install is in progress'; exit 1; }
+backup=
+cleanup() {
+    [ -z "$backup" ] || rm -f "$backup"
+    rmdir "$lock"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+if [ -e "$PROG" ]; then
+    backup=$(mktemp "$DATA_ROOT/bin/.sing-box-backup.XXXXXX")
+    cp "$PROG" "$backup"
+    chmod 755 "$backup"
+fi
+sbox_install_file "$candidate" "$PROG" 755
+if [ "$ENABLED" = 1 ]; then
+    if ! /etc/init.d/sing-box restart; then
+        if [ -n "$backup" ]; then
+            sbox_install_file "$backup" "$PROG" 755
+            rm -f "$backup"
+            backup=
+        else
+            rm -f "$PROG"
+        fi
+        /etc/init.d/sing-box restart || true
+        sbox_error 'New core failed to restart; previous state was restored'
+        exit 1
+    fi
+    attempts=0
+    while [ "$attempts" -lt 20 ]; do
+        sleep 1
+        sbox_service_ready && {
+            [ -z "$backup" ] || rm -f "$backup"
+            backup=
+            echo 'Core installed and service restarted.'
+            exit 0
+        }
+        attempts=$((attempts + 1))
+    done
+    if [ -n "$backup" ]; then
+        sbox_install_file "$backup" "$PROG" 755
+        rm -f "$backup"
+        backup=
+        /etc/init.d/sing-box restart || true
+    else
+        rm -f "$PROG"
+    fi
+    sbox_error 'New core failed to start; previous core was restored'
+    exit 1
+fi
+[ -z "$backup" ] || rm -f "$backup"
+backup=
+echo 'Core installed. The service is disabled.'
