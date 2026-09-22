@@ -184,6 +184,38 @@ LAN 依靠 RA/NDP relay 共享 WAN 网段。
 - [NDP master 自发请求的邻居发现](https://github.com/openwrt/odhcpd/commit/f0d855358b86)
 - [使用链路本地源地址的 macOS 兼容修复](https://github.com/openwrt/odhcpd/commit/d402cdae4316)
 
+### 手机微信图片的独立 DNS 问题
+
+同日继续排查手机，控制接口确认 `mmbiz.qpic.cn`、`wx.qlogo.cn` 和
+`res.wx.qq.com` 走 direct，却在部分 IPv4 节点持续超时或无下行数据。
+活动 DNS 解析曾返回 `43.171.80.40` 等节点；路由器向校园 DNS 和
+`223.5.5.5` 查询时，图片节点为 `183.66.105.224`，头像节点为
+`219.153.154.32/30` 范围中的地址。后者在 IPv4 直连下约 0.14 秒得到响应。
+从路由器对同一域名发送 A 查询已复核：原 IPv6 DNS `2400:3200::1`
+返回上述 `43.*` 节点，IPv4 DNS `223.5.5.5` 返回 `183.66.105.224`。
+图片域名的 IPv6 解析和连接也恢复可用。根路径返回 HTTP 400 是 CDN
+对缺少图片路径的正常响应，只证明连接可用，仍需手机实际图片加载验收。
+
+当前实机已给 `qpic.cn`、`qlogo.cn`、`res.wx.qq.com` 增加优先 DNS 规则，
+使用 UDP `223.5.5.5`，保留 A/AAAA 和原有直连出口。没有把微信整体改走
+海外代理，也没有关闭全部广告规则。旧节点不可达的上游原因尚未确定。
+
+私人 JSON 保存在设备数据分区，不能复制到公共固件覆盖目录。仓库提供
+可重复生成同样修复的工具（Python 3，在电脑运行）：
+
+```sh
+python3 scripts/patch-wechat-dns.py /private/path/config.json /private/path/candidate.json
+```
+
+工具不覆盖输入文件，输出权限为 0600，不输出凭据。把候选文件私下上传到
+路由器后，使用 `singbox-install-config /tmp/candidate.json` 校验安装，再
+重启 sing-box。固件更新不会自动改写已有私人配置；订阅覆盖配置时应在
+订阅生成端加入相同规则，或再次生成并验证候选文件。客户端旧 DNS 缓存
+可能需要重新连接 Wi-Fi 后才刷新。
+
+首次构建还发现上游只有 `nftables-json` 和 `nftables-nojson` 实际包，
+`nftables` 是虚拟名称。已改选 `nftables-json`，构建检查接受两种实际实现。
+
 ## 官方依据
 
 - [RE-SS-01 设备树](https://github.com/openwrt/openwrt/blob/main/target/linux/qualcommax/dts/ipq6000-re-ss-01.dts)

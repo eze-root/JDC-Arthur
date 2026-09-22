@@ -29,7 +29,7 @@ if grep -qx 'CONFIG_PACKAGE_sing-box=y' "$config"; then
     exit 1
 fi
 for symbol in \
-    PACKAGE_ip-full PACKAGE_ss PACKAGE_ca-bundle PACKAGE_curl PACKAGE_nftables \
+    PACKAGE_ip-full PACKAGE_ss PACKAGE_ca-bundle PACKAGE_curl \
     PACKAGE_kmod-tun PACKAGE_kmod-nft-tproxy PACKAGE_kmod-nft-fib \
     PACKAGE_luci-compat PACKAGE_luci-lua-runtime; do
     grep -qx "CONFIG_$symbol=y" "$config" || {
@@ -37,6 +37,10 @@ for symbol in \
         exit 1
     }
 done
+grep -Eq '^CONFIG_PACKAGE_nftables-(json|nojson)=y$' "$config" || {
+    echo 'Required nftables implementation is missing (nftables-json or nftables-nojson)' >&2
+    exit 1
+}
 [ -n "$overlay" ] && [ -s "$overlay/usr/bin/sing-box" ] || {
     echo 'Pinned official sing-box core is missing from the proxy overlay' >&2
     exit 1

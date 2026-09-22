@@ -457,6 +457,13 @@ architecture=aarch64_cortex-a53
   assert.equal(ipv4.status, 0, ipv4.stderr + ipv4.stdout);
   const dual = f.run('check.sh', [proxy, 'singbox-dualstack', overlay]);
   assert.equal(dual.status, 0, dual.stderr + dual.stdout);
+  const nojson = f.write('nojson.config', source('configs/0-jd1800-tproxy.config')
+    .replace('CONFIG_PACKAGE_nftables-json=y', 'CONFIG_PACKAGE_nftables-nojson=y'));
+  assert.equal(f.run('check.sh', [nojson, 'singbox-dualstack', overlay]).status, 0);
+  const virtual = f.write('virtual.config', source('configs/0-jd1800-tproxy.config')
+    .replace('CONFIG_PACKAGE_nftables-json=y', 'CONFIG_PACKAGE_nftables=y'));
+  assert.notEqual(f.run('check.sh', [virtual, 'singbox-dualstack', overlay]).status, 0,
+    'A virtual package name must not satisfy the installed nft requirement');
   fs.rmSync(f.root + '/overlay/usr/bin/sing-box');
   assert.notEqual(f.run('check.sh', [proxy, 'singbox-ipv4', overlay]).status, 0);
 });
@@ -471,4 +478,29 @@ test('proxy firmware pins the official SagerNet OpenWrt core', () => {
   const workflow = source('.github/workflows/0-JD1800-TPROXY.yml');
   assert.match(workflow, /install-official-sing-box\.sh/);
   assert.match(workflow, /sing-box-core\.txt/);
+});
+
+test('WeChat DNS correction preserves private nodes and is repeatable', t => {
+  const f = fixture(t);
+  const original = {
+    dns: { servers: [{ tag: 'existing', type: 'udp', server: '2001:db8::53' }],
+      rules: [{ rule_set: 'geosite-cn', server: 'existing' }], final: 'existing' },
+    outbounds: [{ type: 'example', tag: 'private', password: 'fixture-secret' }],
+    route: { final: 'private' }
+  };
+  const input = f.write('input.json', JSON.stringify(original));
+  const output = f.root + '/candidate.json';
+  const run = (src, dst) => spawnSync('python3',
+    [path.join(repo, 'scripts/patch-wechat-dns.py'), src, dst], { encoding: 'utf8' });
+  assert.equal(run(input, output).status, 0);
+  const updated = JSON.parse(fs.readFileSync(output));
+  assert.deepEqual(updated.outbounds, original.outbounds);
+  assert.deepEqual(updated.route, original.route);
+  assert.deepEqual(updated.dns.rules.slice(1), original.dns.rules);
+  assert.equal(updated.dns.rules[0].server, 'dns-wechat-local');
+  assert.equal(updated.dns.servers.at(-1).server, '223.5.5.5');
+  assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
+  assert.notEqual(run(input, output).status, 0, 'Must refuse overwriting an existing file');
+  assert.equal(run(output, f.root + '/second.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/second.json')), updated);
 });
