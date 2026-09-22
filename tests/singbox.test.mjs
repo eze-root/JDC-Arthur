@@ -180,7 +180,9 @@ test('relay profiles migrate the legacy master and IPv4 profile removes it', t =
   const f = fixture(t);
   f.write('profile.sh', source('files/etc/uci-defaults/98-arthur-profile')
     .replaceAll('/etc/arthur-profile', f.root + '/profile'));
-  f.write('bin/uci', `#!${process.execPath}
+  f.vars.TEST_NODE = process.execPath;
+  f.write('bin/uci', '#!/bin/sh\nexec "$TEST_NODE" "$TEST_ROOT/uci.cjs" "$@"\n');
+  f.write('uci.cjs', `
 const fs = require('node:fs');
 const file = process.env.TEST_ROOT + '/uci.json';
 const state = JSON.parse(fs.readFileSync(file, 'utf8'));

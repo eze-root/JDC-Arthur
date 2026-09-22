@@ -11,7 +11,7 @@ for symbol in \
     TARGET_DEVICE_qualcommax_ipq60xx_DEVICE_jdcloud_re-ss-01 \
     BUSYBOX_CONFIG_FEATURE_IPV6 \
     PACKAGE_block-mount PACKAGE_kmod-fs-ext4 PACKAGE_e2fsprogs \
-    PACKAGE_luci-proto-ipv6 PACKAGE_luci-proto-ppp; do
+    PACKAGE_luci-proto-ipv6 PACKAGE_luci-proto-ppp PACKAGE_odhcpd-ipv6only; do
     grep -qx "CONFIG_$symbol=y" "$config" || {
         echo "Required build option disappeared: CONFIG_$symbol=y" >&2
         exit 1
