@@ -197,7 +197,8 @@ LAN 依靠 RA/NDP relay 共享 WAN 网段。
 对缺少图片路径的正常响应，只证明连接可用，仍需手机实际图片加载验收。
 
 实机给 `qpic.cn`、`qlogo.cn`、`res.wx.qq.com` 增加优先 DNS 规则，
-使用 UDP `223.5.5.5`。用户随后选择「IPv4 为主，byr.pt 等纯 IPv6 站点
+最初使用 UDP `223.5.5.5`，后续改为同地址的 TCP（见下面 B 站排查）。
+用户随后选择「IPv4 为主，byr.pt 等纯 IPv6 站点
 保留例外」，最终配置采用下面的策略；用户已确认公众号文章图片恢复。
 旧节点不可达的上游原因尚未确定，不能简单归因于 IPv6。
 
@@ -228,7 +229,7 @@ IPv6。上述客户端 DNS 过滤才使普通网站明确使用 IPv4。此策略
 
 ```sh
 python3 scripts/patch-wechat-dns.py /private/path/config.json /private/path/candidate.json \
-  --ipv4-first --refresh-cdn-addresses --direct-dns-tag dns_direct
+  --ipv4-first --refresh-cdn-addresses --direct-dns-tag dns_direct --dns-transport tcp
 # 增加例外时，附加 --ipv6-domain example.org，可重复指定。
 ```
 
@@ -267,6 +268,28 @@ byr.pt 通过 IPv6 约 0.23 秒返回登录跳转。用户随后确认手机图�
 数据分区，不保留配置刷机后需重新导入私人 JSON 并运行 DNS 转发脚本。
 本次编译中的固件提交为 `a2ac1ff`，包括 odhcpd 修复和 nftables 包选择修复；
 后续策略工具与运维说明不改变该固件镜像。
+
+### B 站间歇性 DNS 失败
+
+2026-09-22 晚间继续排查 `bilibili.com`。初次局域网请求复现了多个 B 站
+域名解析 15 秒超时，紧接着对路由器的单次 DNS 查询也超时；因此不能仅以
+首页在另一设备能打开否定客户端报错。现有 B 站图片、视频和 API 连接均为
+IPv4 direct，路由器负载约 0.18，无线链路没有明显拥塞证据。
+
+故障随后自行恢复：调整前 80 次 TCP/UDP 客户端 DNS 查询全部成功，
+最慢约 71 毫秒，Chrome 原有 B 站标签页的主页和封面也已显示。上游 UDP
+查询约 24–31 毫秒，同一 `223.5.5.5:53` 的 TCP 查询约 18–29 毫秒。
+普通 512 字节 DNS 查询也得到完整有效回答，未复现大答案截断问题。
+
+为降低 UDP 丢包对解析的影响，将 `dns_direct` 与 `dns-wechat-local` 的
+`type` 从 `udp` 改为 `tcp`，其余配置不变。此项是可回滚的稳定性调整，
+**尚未证明刚才超时一定由上游 UDP 丢包造成**，也不能把一次恢复视为根治。
+未将 B 站改走代理，未修改浏览器插件或安全 DNS 设置。
+
+候选配置已由实机 sing-box 1.13.21 校验；应用后重新加载 Chrome 中的 B 站
+主页，页面和资源成功显示。B 站主页/API/图片域名复测约 2–23 毫秒，微信
+解析成功，byr.pt 的 AAAA 例外保留。回滚文件为数据分区中的
+`sing-box/backup-20260922/config-before-bili-dns-tcp.json`。
 
 首次构建还发现上游只有 `nftables-json` 和 `nftables-nojson` 实际包，
 `nftables` 是虚拟名称。已改选 `nftables-json`，构建检查接受两种实际实现。

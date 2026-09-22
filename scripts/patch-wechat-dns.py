@@ -12,7 +12,7 @@ DIRECT_TAG = "direct-wechat-cdn"
 
 
 def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
-          direct_dns_tag=None):
+          direct_dns_tag=None, transport="udp"):
     dns = config.get("dns")
     if not isinstance(dns, dict) or not isinstance(dns.get("servers"), list):
         raise ValueError("An existing sing-box DNS configuration is required")
@@ -20,13 +20,14 @@ def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
         raise ValueError("DNS rules must be an array")
     if direct_dns_tag:
         direct_dns = next((s for s in dns["servers"] if s.get("tag") == direct_dns_tag), None)
-        if direct_dns is None or direct_dns.get("type") != "udp":
-            raise ValueError("The selected direct DNS must be an existing UDP server")
+        if direct_dns is None or direct_dns.get("type") not in ("udp", "tcp"):
+            raise ValueError("The selected direct DNS must be an existing UDP/TCP server")
+        direct_dns["type"] = transport
         direct_dns["server"] = server
         direct_dns["server_port"] = 53
     dns["servers"] = [s for s in dns["servers"] if s.get("tag") != TAG]
     dns["servers"].append({
-        "type": "udp", "tag": TAG, "server": server, "server_port": 53,
+        "type": transport, "tag": TAG, "server": server, "server_port": 53,
     })
     rule = {
         "domain_suffix": DOMAINS, "action": "route", "server": TAG,
@@ -97,12 +98,15 @@ def main():
     parser.add_argument("--refresh-cdn-addresses", action="store_true",
                         help="Re-resolve known WeChat image/article hosts over direct IPv4")
     parser.add_argument("--direct-dns-tag",
-                        help="Also move this existing UDP resolver to --server")
+                        help="Also move this existing UDP/TCP resolver to --server")
+    parser.add_argument("--dns-transport", choices=["udp", "tcp"], default="udp",
+                        help="Upstream transport; TCP avoids UDP packet-loss timeouts")
     args = parser.parse_args()
     try:
         with open(args.input, encoding="utf-8") as stream:
             config = patch(json.load(stream), str(args.server), args.ipv4_first,
-                           args.ipv6_domain, args.refresh_cdn_addresses, args.direct_dns_tag)
+                           args.ipv6_domain, args.refresh_cdn_addresses, args.direct_dns_tag,
+                           args.dns_transport)
         data = json.dumps(config, ensure_ascii=False, indent=2) + "\n"
         # Never overwrite the original or expose credentials through stdout.
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

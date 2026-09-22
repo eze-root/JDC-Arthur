@@ -521,7 +521,7 @@ test('IPv4 policy preserves IPv6 exceptions, proxy credentials and exact CDN hos
   const run = (src, dst, extra = []) => spawnSync('python3',
     [path.join(repo, 'scripts/patch-wechat-dns.py'), src, dst,
       '--ipv4-first', '--refresh-cdn-addresses', '--direct-dns-tag', 'existing',
-      ...extra], { encoding: 'utf8' });
+      '--dns-transport', 'tcp', ...extra], { encoding: 'utf8' });
   const output = f.root + '/candidate.json';
   const result = run(input, output);
   assert.equal(result.status, 0, result.stderr);
@@ -529,6 +529,8 @@ test('IPv4 policy preserves IPv6 exceptions, proxy credentials and exact CDN hos
   const updated = JSON.parse(fs.readFileSync(output));
   assert.deepEqual(updated.outbounds[0], original.outbounds[0]);
   assert.equal(updated.dns.servers[0].server, '223.5.5.5');
+  assert.equal(updated.dns.servers[0].type, 'tcp');
+  assert.equal(updated.dns.servers.at(-1).type, 'tcp');
   assert.equal(updated.route.final, 'private');
   const guard = updated.dns.rules[0];
   assert.deepEqual(guard.rules[0].inbound, ['lan', 'dns-in']);
