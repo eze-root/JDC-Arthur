@@ -196,22 +196,77 @@ LAN 依靠 RA/NDP relay 共享 WAN 网段。
 图片域名的 IPv6 解析和连接也恢复可用。根路径返回 HTTP 400 是 CDN
 对缺少图片路径的正常响应，只证明连接可用，仍需手机实际图片加载验收。
 
-当前实机已给 `qpic.cn`、`qlogo.cn`、`res.wx.qq.com` 增加优先 DNS 规则，
-使用 UDP `223.5.5.5`，保留 A/AAAA 和原有直连出口。没有把微信整体改走
-海外代理，也没有关闭全部广告规则。旧节点不可达的上游原因尚未确定。
+实机给 `qpic.cn`、`qlogo.cn`、`res.wx.qq.com` 增加优先 DNS 规则，
+使用 UDP `223.5.5.5`。用户随后选择「IPv4 为主，byr.pt 等纯 IPv6 站点
+保留例外」，最终配置采用下面的策略；用户已确认公众号文章图片恢复。
+旧节点不可达的上游原因尚未确定，不能简单归因于 IPv6。
+
+- DNS 全局及原有 `prefer_ipv6` 规则改为 `prefer_ipv4`。
+- 国内直连 DNS `dns_direct` 从 `2400:3200::1` 改为 `223.5.5.5`，
+  与微信专用解析器统一；国外域名仍使用经代理访问的 `1.1.1.1` DoH。
+  WAN 下发的 `192.0.0.33/34` 保留在上游状态，但 dnsmasq 已设
+  `noresolv=1`，不会用它们处理局域网 DNS 请求。
+- 对来自客户端入站的 AAAA、HTTPS、SVCB 查询返回 NOERROR 空答案；
+  `byr.pt`、`lan`、`local`、`ip6.arpa` 除外。HTTPS/SVCB 也可能携带
+  IPv6 地址提示，因此一并处理。规则限定客户端入站，不限制私人代理
+  服务器的内部 IPv6 解析，也不关闭 RA、IPv6 转发和 NDP 中继。
+- 在 sniff 之后，只对 `mmbiz.qpic.cn`、`wx.qlogo.cn`、`res.wx.qq.com`、
+  `mp.weixin.qq.com`
+  将目的地址恢复为同一个域名，经专用直连出口重新解析为 IPv4，保留端口
+  和 TLS 域名，避免手机旧 IP 缓存继续连不可达节点。未修改私人代理节点。
+- dnsmasq 的上游设置为 `127.0.0.1#1053`，`noresolv=1`，将发往路由器
+  IPv6 链路本地地址的 DNS 也交给 sing-box。原先这条路径绕过了 TProxy。
+  直接接管链路本地 UDP 会发生回包失败，故保留原有本地流量绕过规则。
+
+`prefer_ipv4` 只是解析/拨号优先级，不会阻止手机对 AAAA 单独查询并选择
+IPv6。上述客户端 DNS 过滤才使普通网站明确使用 IPv4。此策略不拦截应用
+自带的加密 DNS、硬编码 IPv6 或仍未失效的缓存；新遇到纯 IPv6 站点需增加
+例外。`tjupt.org` 本次查询有 A 记录，未列为纯 IPv6 例外。
 
 私人 JSON 保存在设备数据分区，不能复制到公共固件覆盖目录。仓库提供
 可重复生成同样修复的工具（Python 3，在电脑运行）：
 
 ```sh
-python3 scripts/patch-wechat-dns.py /private/path/config.json /private/path/candidate.json
+python3 scripts/patch-wechat-dns.py /private/path/config.json /private/path/candidate.json \
+  --ipv4-first --refresh-cdn-addresses --direct-dns-tag dns_direct
+# 增加例外时，附加 --ipv6-domain example.org，可重复指定。
 ```
 
 工具不覆盖输入文件，输出权限为 0600，不输出凭据。把候选文件私下上传到
 路由器后，使用 `singbox-install-config /tmp/candidate.json` 校验安装，再
-重启 sing-box。固件更新不会自动改写已有私人配置；订阅覆盖配置时应在
+重启 sing-box。然后将 `scripts/configure-singbox-dns-forwarding.sh` 上传到
+路由器并用 `sh` 执行，它先检查服务和 1053 监听，再备份并修改 dnsmasq。
+若已有其他自定义 DNS 上游，脚本会停止，须人工合并。
+
+此后路由器 DNS 依赖 sing-box；永久停用 sing-box 前，必须恢复脚本打印的
+DHCP 配置备份并重启 dnsmasq。2026-09-22 实机的回滚文件为数据分区的
+`sing-box/backup-20260922/config-before-ipv4-first.json` 和
+`sing-box/backup-20260922/dhcp-before-dns-forwarding`。
+
+固件更新不会自动改写已有私人配置；订阅覆盖配置时应在
 订阅生成端加入相同规则，或再次生成并验证候选文件。客户端旧 DNS 缓存
-可能需要重新连接 Wi-Fi 后才刷新。
+可能需要重新连接 Wi-Fi 后才刷新。当前没有启用开机订阅覆盖。
+
+实测普通 IPv4 DNS 和 IPv6 链路本地 DNS 均不再返回微信图片 AAAA，
+仍返回有效 A；两种入口均保留 byr.pt 的 AAAA。指定旧故障 IPv4
+`43.171.80.40` 的 HTTPS 请求经域名重新解析后约 0.10 秒收到 HTTP 400；
+byr.pt 通过 IPv6 约 0.23 秒返回登录跳转。用户随后确认手机图片正常。
+
+随后针对「仍偏慢」反馈统一了国内 DNS。路由器直测 `223.5.5.5` 的四个
+查询耗时约 25–30 毫秒；原 IPv6 DNS 耗时约 37–106 毫秒，并对公众号域名
+返回另一组节点。校园 DNS 同次约 25–30 毫秒，不能据此判定其必然不可用。
+修改后局域网电脑的公众号首页约 0.28 秒返回 HTTP 200，图片域名约 0.13 秒
+返回 HTTP 400，byr.pt 约 0.27 秒返回 HTTP 302；这些只衡量相应请求，
+不能替代手机文章全部图片的吞吐或加载速度测试。对公众号首页的同次
+直连比较中，原解析节点 `43.137.130.213` 首响应约 2.86 秒、完整响应约
+5.46 秒，新节点 `101.91.40.80` 首响应约 0.35 秒、完整响应约 0.38 秒。
+这说明节点选择比 DNS 查询时间本身更影响本次等待；单次结果不代表长期
+平均延迟。因此将 `mp.weixin.qq.com` 也加入精确域名的旧地址修正规则。
+
+策略脚本和私人配置不打包进公共固件；保留配置刷机时须保留 DHCP 配置及
+数据分区，不保留配置刷机后需重新导入私人 JSON 并运行 DNS 转发脚本。
+本次编译中的固件提交为 `a2ac1ff`，包括 odhcpd 修复和 nftables 包选择修复；
+后续策略工具与运维说明不改变该固件镜像。
 
 首次构建还发现上游只有 `nftables-json` 和 `nftables-nojson` 实际包，
 `nftables` 是虚拟名称。已改选 `nftables-json`，构建检查接受两种实际实现。

@@ -498,9 +498,65 @@ test('WeChat DNS correction preserves private nodes and is repeatable', t => {
   assert.deepEqual(updated.route, original.route);
   assert.deepEqual(updated.dns.rules.slice(1), original.dns.rules);
   assert.equal(updated.dns.rules[0].server, 'dns-wechat-local');
+  assert.equal(updated.dns.rules[0].strategy, 'prefer_ipv4');
   assert.equal(updated.dns.servers.at(-1).server, '223.5.5.5');
   assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
   assert.notEqual(run(input, output).status, 0, 'Must refuse overwriting an existing file');
   assert.equal(run(output, f.root + '/second.json').status, 0);
   assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/second.json')), updated);
+});
+
+test('IPv4 policy preserves IPv6 exceptions, proxy credentials and exact CDN hostnames', t => {
+  const f = fixture(t);
+  const original = {
+    inbounds: [{ type: 'tproxy', tag: 'lan' }, { type: 'direct', tag: 'dns-in' }],
+    dns: { servers: [{ tag: 'existing', type: 'udp', server: '2001:db8::53' }],
+      rules: [{ rule_set: 'geosite-cn', server: 'existing', strategy: 'prefer_ipv6' }] },
+    outbounds: [{ type: 'example', tag: 'private', password: 'fixture-secret',
+      server: 'ipv6-only.example' }],
+    route: { rules: [{ action: 'sniff' }, { rule_set: 'geosite-cn', outbound: 'direct' }],
+      final: 'private' }
+  };
+  const input = f.write('input.json', JSON.stringify(original));
+  const run = (src, dst, extra = []) => spawnSync('python3',
+    [path.join(repo, 'scripts/patch-wechat-dns.py'), src, dst,
+      '--ipv4-first', '--refresh-cdn-addresses', '--direct-dns-tag', 'existing',
+      ...extra], { encoding: 'utf8' });
+  const output = f.root + '/candidate.json';
+  const result = run(input, output);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-secret/);
+  const updated = JSON.parse(fs.readFileSync(output));
+  assert.deepEqual(updated.outbounds[0], original.outbounds[0]);
+  assert.equal(updated.dns.servers[0].server, '223.5.5.5');
+  assert.equal(updated.route.final, 'private');
+  const guard = updated.dns.rules[0];
+  assert.deepEqual(guard.rules[0].inbound, ['lan', 'dns-in']);
+  assert.deepEqual(guard.rules[1].query_type, ['AAAA', 'HTTPS', 'SVCB']);
+  assert.ok(guard.rules[2].domain_suffix.includes('byr.pt'));
+  assert.equal(guard.rules[2].invert, true);
+  assert.equal(guard.rcode, 'NOERROR');
+  assert.equal(updated.dns.rules.at(-1).strategy, 'prefer_ipv4');
+  const refreshRules = updated.route.rules.slice(1, 5);
+  assert.ok(refreshRules.some(r => r.domain === 'mp.weixin.qq.com'));
+  for (const r of refreshRules) {
+    assert.equal(r.domain, r.override_address);
+    assert.equal(r.override_port, undefined);
+  }
+  assert.equal(updated.outbounds.at(-1).domain_resolver.strategy, 'ipv4_only');
+  assert.deepEqual(updated.route.rules.at(-1), original.route.rules.at(-1));
+  if (process.platform !== 'win32') assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+  assert.equal(run(output, f.root + '/second.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/second.json')), updated);
+  assert.equal(run(output, f.root + '/extended.json', ['--ipv6-domain', 'v6.example']).status, 0);
+  const extended = JSON.parse(fs.readFileSync(f.root + '/extended.json'));
+  assert.equal(extended.dns.rules.length, updated.dns.rules.length);
+  assert.ok(extended.dns.rules[0].rules[2].domain_suffix.includes('v6.example'));
+  assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
+  const noSniff = f.write('no-sniff.json', JSON.stringify({ ...original, route: { rules: [] } }));
+  assert.notEqual(run(noSniff, f.root + '/invalid.json').status, 0);
+  assert.equal(fs.existsSync(f.root + '/invalid.json'), false);
+  assert.notEqual(run(input, f.root + '/missing-dns.json',
+    ['--direct-dns-tag', 'missing']).status, 0);
+  assert.equal(fs.existsSync(f.root + '/missing-dns.json'), false);
 });
