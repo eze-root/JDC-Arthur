@@ -1,21 +1,35 @@
 #!/bin/sh
 # Apply the selected firmware profile on first boot (including after sysupgrade).
 profile=$(cat /etc/arthur-profile 2>/dev/null)
+
+configure_ipv6_relay() {
+    # Use the DHCPv6 logical interface so hybrid mode sees delegated prefixes.
+    # Do not leave two relay masters attached to the same physical WAN device.
+    uci -q delete dhcp.wan.master
+    uci -q delete dhcp.wan.ra
+    uci -q delete dhcp.wan.dhcpv6
+    uci -q delete dhcp.wan.ndp
+    uci -q batch <<'EOF'
+set dhcp.wan6=dhcp
+set dhcp.wan6.interface='wan6'
+set dhcp.wan6.ignore='1'
+set dhcp.wan6.master='1'
+set dhcp.wan6.ra='relay'
+set dhcp.wan6.dhcpv6='relay'
+set dhcp.wan6.ndp='relay'
+set dhcp.wan6.ndp_from_link_local='1'
+set dhcp.lan.ndproxy_routing='1'
+set dhcp.lan.ndp_from_link_local='1'
+EOF
+}
+
 case "$profile" in
     base)
         uci set network.lan.ip6assign='60'
         uci set dhcp.lan.ra='hybrid'
         uci set dhcp.lan.dhcpv6='hybrid'
         uci set dhcp.lan.ndp='hybrid'
-        uci -q batch <<'EOF'
-set dhcp.wan=dhcp
-set dhcp.wan.interface='wan'
-set dhcp.wan.ignore='1'
-set dhcp.wan.master='1'
-set dhcp.wan.ra='relay'
-set dhcp.wan.dhcpv6='relay'
-set dhcp.wan.ndp='relay'
-EOF
+        configure_ipv6_relay
         uci commit network
         uci commit dhcp
         ;;
@@ -33,6 +47,10 @@ EOF
         uci -q delete dhcp.wan.ra
         uci -q delete dhcp.wan.dhcpv6
         uci -q delete dhcp.wan.ndp
+        uci -q delete dhcp.wan6.master
+        uci -q delete dhcp.wan6.ra
+        uci -q delete dhcp.wan6.dhcpv6
+        uci -q delete dhcp.wan6.ndp
         uci commit network
         uci commit dhcp
         uci commit singbox
@@ -44,15 +62,7 @@ EOF
         uci set dhcp.lan.ra='hybrid'
         uci set dhcp.lan.dhcpv6='hybrid'
         uci set dhcp.lan.ndp='hybrid'
-        uci -q batch <<'EOF'
-set dhcp.wan=dhcp
-set dhcp.wan.interface='wan'
-set dhcp.wan.ignore='1'
-set dhcp.wan.master='1'
-set dhcp.wan.ra='relay'
-set dhcp.wan.dhcpv6='relay'
-set dhcp.wan.ndp='relay'
-EOF
+        configure_ipv6_relay
         uci commit network
         uci commit dhcp
         uci commit singbox

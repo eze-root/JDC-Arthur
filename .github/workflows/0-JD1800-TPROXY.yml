@@ -8,6 +8,12 @@ on:
         required: false
         type: boolean
         default: false
+      profile:
+        description: Firmware profile to build
+        required: false
+        type: choice
+        options: [all, singbox-ipv4, singbox-dualstack]
+        default: all
   push:
     branches:
       - main
@@ -29,14 +35,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - profile: singbox-ipv4
-            tag: IPQ60XX-JD1800-6.12-SINGBOX-IPV4
-          - profile: singbox-dualstack
-            tag: IPQ60XX-JD1800-6.12-SINGBOX-DUALSTACK
+        profile: ${{ fromJSON(inputs.profile == 'singbox-ipv4' && '["singbox-ipv4"]' || inputs.profile == 'singbox-dualstack' && '["singbox-dualstack"]' || '["singbox-ipv4","singbox-dualstack"]') }}
     env:
       FIRMWARE_PROFILE: ${{ matrix.profile }}
-      FIRMWARE_TAG: ${{ matrix.tag }}
+      FIRMWARE_TAG: ${{ matrix.profile == 'singbox-ipv4' && 'IPQ60XX-JD1800-6.12-SINGBOX-IPV4' || 'IPQ60XX-JD1800-6.12-SINGBOX-DUALSTACK' }}
 
     steps:
     - name: Check Server Performance(检查服务器性能)
@@ -165,6 +167,8 @@ jobs:
         tar -zcf Packages.tar.gz packages
         rm -rf packages
         git -C "$OPENWRT_PATH" rev-parse HEAD > source-commit.txt
+        git -C "$GITHUB_WORKSPACE" rev-parse HEAD > config-commit.txt
+        cp "$OPENWRT_PATH/package/network/services/odhcpd/Makefile" odhcpd-source.txt
         cp "$GITHUB_WORKSPACE/docs/devs/singbox-tproxy.md" singbox-guide.md
         cp "$GITHUB_WORKSPACE/docs/devs/arthur-operations.md" arthur-operations.md
         cp "$OPENWRT_PATH/files/usr/share/singbox/core-version.txt" sing-box-core.txt

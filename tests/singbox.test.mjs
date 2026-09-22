@@ -170,10 +170,68 @@ test('public direct configurations are valid JSON with no remote nodes', () => {
 
 test('firmware profiles keep router IPv6 while controlling client IPv6', () => {
   const profile = source('files/etc/uci-defaults/98-arthur-profile');
-  assert.match(profile, /base\)[\s\S]*network\.lan\.ip6assign='60'[\s\S]*dhcp\.wan\.ra='relay'/);
+  assert.match(profile, /base\)[\s\S]*network\.lan\.ip6assign='60'[\s\S]*configure_ipv6_relay/);
   assert.match(profile, /singbox-ipv4\)[\s\S]*delete network\.lan\.ip6assign[\s\S]*dhcp\.lan\.ra='disabled'/);
-  assert.match(profile, /singbox-dualstack\)[\s\S]*client_ipv6='1'[\s\S]*network\.lan\.ip6assign='64'[\s\S]*dhcp\.wan\.ra='relay'/);
+  assert.match(profile, /singbox-dualstack\)[\s\S]*client_ipv6='1'[\s\S]*network\.lan\.ip6assign='64'[\s\S]*configure_ipv6_relay/);
   assert.match(source('files/etc/config/network'), /config interface 'wan6'[\s\S]*option proto 'dhcpv6'/);
+});
+
+test('relay profiles migrate the legacy master and IPv4 profile removes it', t => {
+  const f = fixture(t);
+  f.write('profile.sh', source('files/etc/uci-defaults/98-arthur-profile')
+    .replaceAll('/etc/arthur-profile', f.root + '/profile'));
+  f.write('bin/uci', `#!${process.execPath}
+const fs = require('node:fs');
+const file = process.env.TEST_ROOT + '/uci.json';
+const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+const args = process.argv.slice(2).filter(x => x !== '-q');
+const lines = args[0] === 'batch' ? fs.readFileSync(0, 'utf8').trim().split('\\n') : [args.join(' ')];
+for (const line of lines) {
+  const [command, ...rest] = line.split(' ');
+  const text = rest.join(' ');
+  if (command === 'set') {
+    const eq = text.indexOf('=');
+    state[text.slice(0, eq)] = text.slice(eq + 1).replace(/^'|'$/g, '');
+  } else if (command === 'delete') delete state[text];
+}
+fs.writeFileSync(file, JSON.stringify(state));
+`);
+  f.write('uci.json', JSON.stringify({ 'dhcp.wan.master': '1', 'dhcp.wan.ndp': 'relay' }));
+  for (const profile of ['base', 'singbox-ipv4', 'singbox-dualstack', 'singbox-dualstack']) {
+    f.write('profile', profile);
+    const result = f.run('profile.sh');
+    assert.equal(result.status, 0, result.stderr);
+    const state = JSON.parse(fs.readFileSync(f.root + '/uci.json'));
+    assert.equal(state['dhcp.wan.master'], undefined);
+    assert.equal(state['dhcp.wan.ndp'], undefined);
+    if (profile === 'singbox-ipv4') {
+      assert.equal(state['dhcp.wan6.master'], undefined);
+      assert.equal(state['dhcp.wan6.ndp'], undefined);
+      assert.equal(state['dhcp.lan.ndp'], 'disabled');
+    } else {
+      assert.equal(state['dhcp.wan6.interface'], 'wan6');
+      assert.equal(state['dhcp.wan6.master'], '1');
+      assert.equal(state['dhcp.wan6.ndp'], 'relay');
+      assert.equal(state['dhcp.lan.ndproxy_routing'], '1');
+      assert.equal(state['dhcp.lan.ndp_from_link_local'], '1');
+    }
+  }
+});
+
+test('source preparation upgrades old odhcpd to the reviewed NDP fixes', t => {
+  const f = fixture(t);
+  f.write('build/include/toplevel.mk', '# fixture');
+  f.write('build/package/network/services/odhcpd/Makefile',
+    'PKG_SOURCE_DATE:=2024-05-08\nPKG_SOURCE_VERSION:=a2988231\nPKG_MIRROR_HASH:=old\n');
+  f.write('diy.sh', source('diy-jd1800.sh'));
+  f.write('run-diy.sh', 'cd "$TEST_ROOT/build"\nsh "$TEST_ROOT/diy.sh"\n');
+  for (let i = 0; i < 2; i++) {
+    const result = f.run('run-diy.sh');
+    assert.equal(result.status, 0, result.stderr);
+    const makefile = fs.readFileSync(f.root + '/build/package/network/services/odhcpd/Makefile', 'utf8');
+    assert.match(makefile, /^PKG_SOURCE_VERSION:=5d7be43f8b9dec0eb47e245cfab81108bb131273$/m);
+    assert.match(makefile, /^PKG_MIRROR_HASH:=b9bd30d14f79e34b9f3511a511ef1cd1c4541568448e91fd02ae9173f12a0b64$/m);
+  }
 });
 
 test('invalid candidate preserves active config and removes pending files', t => {

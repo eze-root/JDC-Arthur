@@ -155,6 +155,8 @@ jobs:
         tar -zcf Packages.tar.gz packages
         rm -rf packages
         git -C "$OPENWRT_PATH" rev-parse HEAD > source-commit.txt
+        git -C "$GITHUB_WORKSPACE" rev-parse HEAD > config-commit.txt
+        cp "$OPENWRT_PATH/package/network/services/odhcpd/Makefile" odhcpd-source.txt
         cp "$GITHUB_WORKSPACE/docs/devs/arthur-operations.md" arthur-operations.md
         printf '%s\n' "$FIRMWARE_PROFILE" > firmware-profile.txt
         echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV

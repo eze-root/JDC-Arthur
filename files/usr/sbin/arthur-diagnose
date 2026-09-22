@@ -33,6 +33,17 @@ uci -q get firewall.@defaults[0].flow_offloading_hw
 nft list table inet singbox_tproxy 2>/dev/null
 ip -4 rule show
 ip -6 rule show
+section 'IPv6 relay return paths'
+ip -6 addr show
+ip -6 route show table main
+ip -6 neigh show
+ip -6 neigh show proxy
+for interface in lan wan wan6; do
+    for option in interface master ra dhcpv6 ndp ndproxy_routing ndp_from_link_local; do
+        value=$(uci -q get "dhcp.$interface.$option") || continue
+        printf 'dhcp.%s.%s=%s\n' "$interface" "$option" "$value"
+    done
+done
 section 'Recent kernel health signals'
 dmesg | grep -Ei 'out of memory|oom-kill|watchdog|thermal|mmc.*error|I/O error' | tail -n 30
 exit 0

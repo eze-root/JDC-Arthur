@@ -147,6 +147,43 @@ sysupgrade -T /tmp/firmware.bin
 
 完成以上 direct 验收后再提供真实 sing-box 配置，这样节点问题和固件问题可以分开定位。
 
+## 9. 2026-09-22：LAN IPv6 回程故障
+
+实机仍运行 `odhcpd-ipv6only 2024.05.08~a2988231`。WAN 获得全局 `/64`，
+但 `ubus call network.interface.wan6 status` 的 `ipv6-prefix` 为空：上游没有 PD，
+LAN 依靠 RA/NDP relay 共享 WAN 网段。
+
+本次复现时，`byr.pt` 的 A 查询无地址，AAAA 查询正常。路由器自身访问 IPv6
+返回 HTTP 302 到登录页；LAN 电脑访问相同地址超时。电脑的两个全局 IPv6
+地址出现在 **WAN** 邻居表的 FAILED/INCOMPLETE 项中，而主路由表缺少指向
+`br-lan` 的 `/128` 回程。临时添加精确的 LAN 主机路由后，电脑访问 byr.pt
+和微信 IPv6 服务立即得到 HTTP 响应。去掉临时路由后，已学习地址继续工作，
+尚未学习的地址仍超时，说明只重启 odhcpd 或修改 DNS 不足以根治。
+
+旧 odhcpd 会忽略自己从 master/WAN 发出的邻居请求，不能据此去 LAN
+发现客户端。上游 `f0d855358b86` 修复该问题；`d402cdae4316` 将中继探测改为
+链路本地源地址，改善 macOS 邻居发现。`diy-jd1800.sh` 固定 odhcpd 到包含
+两项修复的 `5d7be43f8b9dec0eb47e245cfab81108bb131273`，并校验源码包哈希。
+
+固件首次启动配置把 relay master 放在 `dhcp.wan6`，移除旧的 `dhcp.wan`
+中继选项，明确启用 LAN 的 `ndproxy_routing` 与 `ndp_from_link_local`。
+基础版和双栈版都使用该配置；IPv4 客户端版会清理两个 WAN 节上的中继选项。
+固件产物附带 `config-commit.txt` 与 `odhcpd-source.txt`，便于核对实际源码。
+
+升级前的临时主机路由只用于验证，不能写死到公共固件：IPv6 隐私地址、
+上游前缀和设备都会变化。新固件验收需要在清空测试邻居状态或客户端重新
+入网后，再验证自动生成 `客户端IPv6/128 dev br-lan`，以及重启和 WAN 重连。
+`arthur-diagnose` 已加入 IPv6 地址、主路由、邻居和中继选项输出。
+
+微信部分 IPv4 端点在本次测试中从路由器直接连接也超时，但其他 IPv4
+网站正常。此项不能仅凭 IPv6 修复判定解决；网页 HTTP 响应也不能替代微信
+客户端登录、消息和图片传输验收。私人节点配置、密码和运行备份不进入固件。
+
+上游修复：
+
+- [NDP master 自发请求的邻居发现](https://github.com/openwrt/odhcpd/commit/f0d855358b86)
+- [使用链路本地源地址的 macOS 兼容修复](https://github.com/openwrt/odhcpd/commit/d402cdae4316)
+
 ## 官方依据
 
 - [RE-SS-01 设备树](https://github.com/openwrt/openwrt/blob/main/target/linux/qualcommax/dts/ipq6000-re-ss-01.dts)

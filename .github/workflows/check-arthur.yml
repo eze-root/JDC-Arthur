@@ -25,8 +25,11 @@ jobs:
           luac5.1 -p files/usr/lib/lua/luci/model/cbi/singbox.lua
           luac5.1 -p files/usr/lib/lua/luci/controller/singbox.lua
           sh scripts/check-arthur-config.sh configs/0-jd1800.config base
-          sh scripts/check-arthur-config.sh configs/0-jd1800-tproxy.config singbox-ipv4
-          sh scripts/check-arthur-config.sh configs/0-jd1800-tproxy.config singbox-dualstack
+          mkdir -p .local/core-check/etc/config
+          cp files/etc/config/singbox .local/core-check/etc/config/
+          sh scripts/install-official-sing-box.sh .local/core-check
+          sh scripts/check-arthur-config.sh configs/0-jd1800-tproxy.config singbox-ipv4 .local/core-check
+          sh scripts/check-arthur-config.sh configs/0-jd1800-tproxy.config singbox-dualstack .local/core-check
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
