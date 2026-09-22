@@ -12,7 +12,7 @@ DIRECT_TAG = "direct-wechat-cdn"
 
 
 def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
-          direct_dns_tag=None, transport="udp"):
+          direct_dns_tag=None, transport="tcp"):
     dns = config.get("dns")
     if not isinstance(dns, dict) or not isinstance(dns.get("servers"), list):
         raise ValueError("An existing sing-box DNS configuration is required")
@@ -99,8 +99,8 @@ def main():
                         help="Re-resolve known WeChat image/article hosts over direct IPv4")
     parser.add_argument("--direct-dns-tag",
                         help="Also move this existing UDP/TCP resolver to --server")
-    parser.add_argument("--dns-transport", choices=["udp", "tcp"], default="udp",
-                        help="Upstream transport; TCP avoids UDP packet-loss timeouts")
+    parser.add_argument("--dns-transport", choices=["udp", "tcp"], default="tcp",
+                        help="Upstream transport (default: TCP, the confirmed router policy)")
     args = parser.parse_args()
     try:
         with open(args.input, encoding="utf-8") as stream:

@@ -500,6 +500,7 @@ test('WeChat DNS correction preserves private nodes and is repeatable', t => {
   assert.equal(updated.dns.rules[0].server, 'dns-wechat-local');
   assert.equal(updated.dns.rules[0].strategy, 'prefer_ipv4');
   assert.equal(updated.dns.servers.at(-1).server, '223.5.5.5');
+  assert.equal(updated.dns.servers.at(-1).type, 'tcp');
   assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
   assert.notEqual(run(input, output).status, 0, 'Must refuse overwriting an existing file');
   assert.equal(run(output, f.root + '/second.json').status, 0);
