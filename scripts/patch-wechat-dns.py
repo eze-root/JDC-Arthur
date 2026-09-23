@@ -11,8 +11,18 @@ CDN_HOSTS = ["mmbiz.qpic.cn", "wx.qlogo.cn", "res.wx.qq.com", "mp.weixin.qq.com"
 DIRECT_TAG = "direct-wechat-cdn"
 
 
+def resolver_fields(server, transport):
+    fields = {"type": transport, "server": server, "server_port": 53}
+    if transport == "https":
+        if server not in ("223.5.5.5", "223.6.6.6"):
+            raise ValueError("HTTPS mode requires an AliDNS IPv4 endpoint")
+        fields.update(server_port=443, path="/dns-query",
+                      tls={"enabled": True, "server_name": "dns.alidns.com"})
+    return fields
+
+
 def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
-          direct_dns_tag=None, transport="tcp"):
+          direct_dns_tag=None, transport="https"):
     dns = config.get("dns")
     if not isinstance(dns, dict) or not isinstance(dns.get("servers"), list):
         raise ValueError("An existing sing-box DNS configuration is required")
@@ -20,15 +30,13 @@ def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
         raise ValueError("DNS rules must be an array")
     if direct_dns_tag:
         direct_dns = next((s for s in dns["servers"] if s.get("tag") == direct_dns_tag), None)
-        if direct_dns is None or direct_dns.get("type") not in ("udp", "tcp"):
-            raise ValueError("The selected direct DNS must be an existing UDP/TCP server")
-        direct_dns["type"] = transport
-        direct_dns["server"] = server
-        direct_dns["server_port"] = 53
+        if direct_dns is None or direct_dns.get("type") not in ("udp", "tcp", "https"):
+            raise ValueError("The selected direct DNS must be a UDP/TCP/HTTPS server")
+        for key in ("path", "headers", "tls"):
+            direct_dns.pop(key, None)
+        direct_dns.update(resolver_fields(server, transport))
     dns["servers"] = [s for s in dns["servers"] if s.get("tag") != TAG]
-    dns["servers"].append({
-        "type": transport, "tag": TAG, "server": server, "server_port": 53,
-    })
+    dns["servers"].append(dict(resolver_fields(server, transport), tag=TAG))
     rule = {
         "domain_suffix": DOMAINS, "action": "route", "server": TAG,
         "strategy": "prefer_ipv4",
@@ -98,9 +106,9 @@ def main():
     parser.add_argument("--refresh-cdn-addresses", action="store_true",
                         help="Re-resolve known WeChat image/article hosts over direct IPv4")
     parser.add_argument("--direct-dns-tag",
-                        help="Also move this existing UDP/TCP resolver to --server")
-    parser.add_argument("--dns-transport", choices=["udp", "tcp"], default="tcp",
-                        help="Upstream transport (default: TCP, the confirmed router policy)")
+                        help="Also move this existing UDP/TCP/HTTPS resolver to --server")
+    parser.add_argument("--dns-transport", choices=["udp", "tcp", "https"], default="https",
+                        help="Upstream transport (default: AliDNS HTTPS over TCP 443)")
     args = parser.parse_args()
     try:
         with open(args.input, encoding="utf-8") as stream:

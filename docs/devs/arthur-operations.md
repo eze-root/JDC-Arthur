@@ -2,9 +2,13 @@
 
 ## 已确认的 DNS 策略（2026-09-23）
 
-用户已明确确认：**国内直连 DNS 使用 TCP 连接 `223.5.5.5:53`**。
-`dns_direct` 与 `dns-wechat-local` 都使用这项设置。配置生成工具默认采用
-`tcp`，不指定参数时也不会退回 UDP；只有显式 `--dns-transport udp` 才切换。
+当前国内直连与微信 DNS 使用 **`223.5.5.5:443` 的 DoH（HTTPS over TCP）**。
+此前按用户要求使用 TCP 53；9 月 23 日 17:59 的日志再次记录百度、B 站、
+WPS 等多个域名读取 `223.5.5.5:53` 超时 10–20 秒，因此在本次故障修复中
+保留阿里 IPv4 地址与 TCP 传输，改用 HTTPS 443。`dns_direct` 和
+`dns-wechat-local` 均设置 `type=https`、`path=/dns-query`，TLS 名称
+`dns.alidns.com`，保持证书校验。直接使用 IP，无需先解析 DoH 服务器域名。
+配置生成工具默认采用 `https`；显式 `--dns-transport tcp` 可回退到旧策略。
 国外 DNS 保留经 `select` 代理访问 `1.1.1.1` 的 DoH。
 
 客户端普通网站采用 IPv4 为主策略，保留 `byr.pt` 等已有 IPv6 例外。
@@ -244,7 +248,7 @@ IPv6。上述客户端 DNS 过滤才使普通网站明确使用 IPv4。此策略
 
 ```sh
 python3 scripts/patch-wechat-dns.py /private/path/config.json /private/path/candidate.json \
-  --ipv4-first --refresh-cdn-addresses --direct-dns-tag dns_direct --dns-transport tcp
+  --ipv4-first --refresh-cdn-addresses --direct-dns-tag dns_direct --dns-transport https
 # 增加例外时，附加 --ipv6-domain example.org，可重复指定。
 ```
 
@@ -335,9 +339,32 @@ HTTP 200，`byr.pt` 仍能返回 AAAA。回滚文件位于数据分区
 首页均返回 HTTP 200；直连 HTTP 已不再返回认证跳转，直连 HTTPS 也未再
 出现证书校验失败。但 5 次 AliDNS TCP 查询仍有 2 次超时，UDP 5 次全成功。
 因此不能将全部 DNS 问题都归因于认证，也不能认为公网 TCP DNS 已稳定。
-认证失效时仍需登录；确认的公网 TCP 策略保留，校园例外避免校内访问依赖它。
+认证失效时仍需登录；当时保留公网 TCP 53 策略，校园例外避免校内访问依赖它。
 未关闭证书校验。认证页需要自动跳转携带的参数，
 直接输入不带参数的入口可能提示「设备未注册」；网络参数和账号不写入仓库。
+
+### TCP 53 再次大面积超时，迁移到同地址 DoH
+
+2026-09-23 17:59，服务仍在运行且内存充足，但日志记录多个国内域名
+`read tcp ... ->223.5.5.5:53: i/o timeout`。部分请求重试超过两分钟；
+18:00 的单次查询又恢复。因此单次首页成功或缓存命中不能证明故障消失。
+目前只能确认 TCP 53 路径间歇失效，尚不能区分校园出口、服务器限制或其他
+中间设备的影响。
+
+从路由器直测 `223.5.5.5:443`，以 `dns.alidns.com` 校验 TLS，刚才报错的
+百度、B 站 API、图片、WPS 及微信域名 6 项全部返回有效 DNS 答案。
+候选配置通过实际 sing-box 1.13.21 检查后于 18:02 应用，只修改两个阿里
+解析器的传输方式；DNS 分流顺序、校园 UDP 例外、IPv4 策略、代理节点和
+路由规则与应用前完全一致。
+
+回滚配置位于数据分区
+`sing-box/backup-20260922/config-before-doh-1800.json`。
+DoH 的配置字段依据 [sing-box HTTPS DNS 文档](https://sing-box.sagernet.org/configuration/dns/server/https/)。
+应用后验证 20 项 DNS 查询（含 byr.pt 的 AAAA 和普通域名 AAAA 过滤）全部
+符合预期，再连续 8 轮、80 次 LAN 查询全部成功，单次最长约 138 毫秒。
+重复查询包括缓存命中，不能作为 80 次独立上游测试。百度、B 站、微信、
+西南大学和 Google 的 HTTPS 均返回 HTTP 200，检查窗口中新增 DNS 错误为 0。
+该修复绕开已确认发生超时的端口，仍需观察真实客户端是否复发。
 
 ### 固件构建交付
 

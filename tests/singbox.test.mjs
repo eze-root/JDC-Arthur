@@ -500,7 +500,11 @@ test('WeChat DNS correction preserves private nodes and is repeatable', t => {
   assert.equal(updated.dns.rules[0].server, 'dns-wechat-local');
   assert.equal(updated.dns.rules[0].strategy, 'prefer_ipv4');
   assert.equal(updated.dns.servers.at(-1).server, '223.5.5.5');
-  assert.equal(updated.dns.servers.at(-1).type, 'tcp');
+  assert.equal(updated.dns.servers.at(-1).type, 'https');
+  assert.equal(updated.dns.servers.at(-1).server_port, 443);
+  assert.equal(updated.dns.servers.at(-1).path, '/dns-query');
+  assert.deepEqual(updated.dns.servers.at(-1).tls,
+    { enabled: true, server_name: 'dns.alidns.com' });
   assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
   assert.notEqual(run(input, output).status, 0, 'Must refuse overwriting an existing file');
   assert.equal(run(output, f.root + '/second.json').status, 0);
@@ -562,6 +566,25 @@ test('IPv4 policy preserves IPv6 exceptions, proxy credentials and exact CDN hos
   assert.notEqual(run(input, f.root + '/missing-dns.json',
     ['--direct-dns-tag', 'missing']).status, 0);
   assert.equal(fs.existsSync(f.root + '/missing-dns.json'), false);
+  const dohPath = f.root + '/doh.json';
+  assert.equal(run(output, dohPath, ['--dns-transport', 'https']).status, 0);
+  const doh = JSON.parse(fs.readFileSync(dohPath));
+  assert.deepEqual(doh.dns.rules, updated.dns.rules);
+  assert.deepEqual(doh.route, updated.route);
+  assert.deepEqual(doh.outbounds, updated.outbounds);
+  for (const s of doh.dns.servers) {
+    assert.equal(s.type, 'https');
+    assert.equal(s.server, '223.5.5.5');
+    assert.equal(s.server_port, 443);
+    assert.equal(s.path, '/dns-query');
+    assert.deepEqual(s.tls, { enabled: true, server_name: 'dns.alidns.com' });
+    assert.equal(s.domain_resolver, undefined, 'IP endpoint must not need bootstrap DNS');
+  }
+  assert.equal(run(dohPath, f.root + '/back-to-tcp.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/back-to-tcp.json')), updated);
+  assert.notEqual(run(input, f.root + '/unknown-https.json',
+    ['--dns-transport', 'https', '--server', '192.0.2.53']).status, 0);
+  assert.equal(fs.existsSync(f.root + '/unknown-https.json'), false);
 });
 
 test('campus DNS restores school lookups while retaining the IPv4 guard and public TCP policy', t => {
