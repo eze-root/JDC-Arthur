@@ -563,3 +563,50 @@ test('IPv4 policy preserves IPv6 exceptions, proxy credentials and exact CDN hos
     ['--direct-dns-tag', 'missing']).status, 0);
   assert.equal(fs.existsSync(f.root + '/missing-dns.json'), false);
 });
+
+test('campus DNS restores school lookups while retaining the IPv4 guard and public TCP policy', t => {
+  const f = fixture(t);
+  const guard = { type: 'logical', mode: 'and', rules: [
+    { inbound: ['dns-in'] }, { query_type: ['AAAA', 'HTTPS', 'SVCB'] },
+    { domain_suffix: ['byr.pt', 'lan', 'local', 'ip6.arpa'], invert: true }
+  ], action: 'predefined', rcode: 'NOERROR' };
+  const original = {
+    dns: { servers: [
+      { tag: 'dns_direct', type: 'tcp', server: '223.5.5.5', server_port: 53 },
+      { tag: 'dns_proxy', type: 'https', server: '1.1.1.1', detour: 'private' }
+    ], rules: [guard,
+      { domain_suffix: ['edu.cn', 'byr.pt'], server: 'dns_direct' },
+      { rule_set: 'geosite-cn', server: 'dns_direct' }
+    ], final: 'dns_proxy' },
+    outbounds: [{ tag: 'private', password: 'fixture-secret' }],
+    route: { final: 'private' }
+  };
+  const input = f.write('campus-input.json', JSON.stringify(original));
+  const output = f.root + '/campus-output.json';
+  const run = (src, dst, args = []) => spawnSync('python3',
+    [path.join(repo, 'scripts/patch-campus-dns.py'), src, dst, ...args], { encoding: 'utf8' });
+  const result = run(input, output);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-secret/);
+  const updated = JSON.parse(fs.readFileSync(output));
+  assert.deepEqual(updated.dns.rules[0], guard);
+  assert.deepEqual(updated.dns.rules[1], { domain_suffix: ['swu.edu.cn', 'byr.pt'],
+    action: 'route', server: 'dns-campus', strategy: 'prefer_ipv4' });
+  assert.deepEqual(updated.dns.rules.slice(2), original.dns.rules.slice(1));
+  assert.deepEqual(updated.dns.servers.slice(0, -1), original.dns.servers);
+  assert.deepEqual(updated.dns.servers.at(-1), { tag: 'dns-campus', type: 'udp',
+    server: '192.0.0.33', server_port: 53 });
+  assert.equal(updated.dns.final, original.dns.final);
+  assert.deepEqual(updated.outbounds, original.outbounds);
+  assert.deepEqual(updated.route, original.route);
+  assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+  assert.notEqual(run(input, output).status, 0);
+  assert.equal(run(output, f.root + '/campus-again.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/campus-again.json')), updated);
+  assert.equal(run(output, f.root + '/campus-other.json', ['--server', '192.0.0.34']).status, 0);
+  const other = JSON.parse(fs.readFileSync(f.root + '/campus-other.json'));
+  assert.deepEqual(other.dns.rules, updated.dns.rules);
+  assert.equal(other.dns.servers.length, updated.dns.servers.length);
+  assert.equal(other.dns.servers.at(-1).server, '192.0.0.34');
+});

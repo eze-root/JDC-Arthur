@@ -1,6 +1,6 @@
 # 亚瑟：连接、存储、升级与验收
 
-## 已确认的 DNS 策略（2026-09-22）
+## 已确认的 DNS 策略（2026-09-23）
 
 用户已明确确认：**国内直连 DNS 使用 TCP 连接 `223.5.5.5:53`**。
 `dns_direct` 与 `dns-wechat-local` 都使用这项设置。配置生成工具默认采用
@@ -8,8 +8,9 @@
 国外 DNS 保留经 `select` 代理访问 `1.1.1.1` 的 DoH。
 
 客户端普通网站采用 IPv4 为主策略，保留 `byr.pt` 等已有 IPv6 例外。
-dnsmasq 转发到 `127.0.0.1#1053`，`noresolv=1`；下面基线表中的校园
-DNS 仅表示 WAN 下发值，不是当前局域网采用的 DNS 上游。
+dnsmasq 转发到 `127.0.0.1#1053`，`noresolv=1`。`swu.edu.cn` 和
+`byr.pt` 单独由 sing-box 转发给校园 DNS `192.0.0.33:53`（UDP）；
+实测未认证时该路径仍可解析，TCP 则超时。其他域名仍按上述策略处理。
 活动私人配置位于路由器
 `/mnt/mmcblk0p27/sing-box/config/config.json`，不放入公共仓库或固件。
 
@@ -219,7 +220,8 @@ LAN 依靠 RA/NDP relay 共享 WAN 网段。
 - 国内直连 DNS `dns_direct` 从 `2400:3200::1` 改为 `223.5.5.5`，
   与微信专用解析器统一；国外域名仍使用经代理访问的 `1.1.1.1` DoH。
   WAN 下发的 `192.0.0.33/34` 保留在上游状态，但 dnsmasq 已设
-  `noresolv=1`，不会用它们处理局域网 DNS 请求。
+  `noresolv=1`，不会自动使用它们；9 月 23 日另在 sing-box 中添加了
+  校园 DNS 的指定域名例外，见下面的校园认证排查。
 - 对来自客户端入站的 AAAA、HTTPS、SVCB 查询返回 NOERROR 空答案；
   `byr.pt`、`lan`、`local`、`ip6.arpa` 除外。HTTPS/SVCB 也可能携带
   IPv6 地址提示，因此一并处理。规则限定客户端入站，不限制私人代理
@@ -279,7 +281,7 @@ byr.pt 通过 IPv6 约 0.23 秒返回登录跳转。用户随后确认手机图�
 
 策略脚本和私人配置不打包进公共固件；保留配置刷机时须保留 DHCP 配置及
 数据分区，不保留配置刷机后需重新导入私人 JSON 并运行 DNS 转发脚本。
-本次编译中的固件提交为 `a2ac1ff`，包括 odhcpd 修复和 nftables 包选择修复；
+本次已完成编译的固件提交为 `a2ac1ff`，包括 odhcpd 修复和 nftables 包选择修复；
 后续策略工具与运维说明不改变该固件镜像。
 
 ### B 站间歇性 DNS 失败
@@ -303,6 +305,47 @@ IPv4 direct，路由器负载约 0.18，无线链路没有明显拥塞证据。
 主页，页面和资源成功显示。B 站主页/API/图片域名复测约 2–23 毫秒，微信
 解析成功，byr.pt 的 AAAA 例外保留。回滚文件为数据分区中的
 `sing-box/backup-20260922/config-before-bili-dns-tcp.json`。
+
+### Google 可用但校内网站无法解析：校园 DNS 例外与认证
+
+2026-09-23 复现：Google 经 IPv6 代理正常，但 `swu.edu.cn` 的客户端 DNS
+查询超时，普通访问在解析阶段等待 10 秒；指定当天解析到的地址后，HTTPS
+约 0.02 秒返回 HTTP 200。站点本身正常，不能据此判定全网断线。
+
+路由器直测 `223.5.5.5`：UDP 查询仍约 27–62 毫秒成功，TCP 查询连续
+等待 3–6 秒无答案。普通 IPv4 HTTP 请求返回校园认证跳转，HTTPS 出现
+不受信任的证书链。HTTP 跳转表明当时校园 IPv4 连接仍需认证；同一状态下
+公网 TCP DNS 不可用。IPv6 代理路径仍正常，所以 Google 可访问。
+
+校园 `192.0.0.33` 的 UDP 查询 `swu.edu.cn` 约 1 毫秒成功，TCP 也超时。
+因此增加 `dns-campus`（UDP `192.0.0.33:53`），仅处理 `swu.edu.cn`、
+`byr.pt` 及其子域，放在客户端 IPv4 策略之后、原有域名分流之前。
+原有 TCP `223.5.5.5:53` 和代理 DoH 保留。脚本只生成候选配置：
+
+```sh
+python3 scripts/patch-campus-dns.py /private/path/config.json /private/path/candidate.json
+```
+
+再通过路由器 `singbox-install-config` 校验安装，并重启服务。实机应用后，
+LAN 查询 `swu.edu.cn` 2 毫秒返回 `222.198.120.37`，正常 HTTPS 请求返回
+HTTP 200，`byr.pt` 仍能返回 AAAA。回滚文件位于数据分区
+`sing-box/backup-20260922/config-before-campus-dns.json`。
+
+该例外恢复校内站点访问。后续复测西南大学主域名和 `www`、Google、B 站
+首页均返回 HTTP 200；直连 HTTP 已不再返回认证跳转，直连 HTTPS 也未再
+出现证书校验失败。但 5 次 AliDNS TCP 查询仍有 2 次超时，UDP 5 次全成功。
+因此不能将全部 DNS 问题都归因于认证，也不能认为公网 TCP DNS 已稳定。
+认证失效时仍需登录；确认的公网 TCP 策略保留，校园例外避免校内访问依赖它。
+未关闭证书校验。认证页需要自动跳转携带的参数，
+直接输入不带参数的入口可能提示「设备未注册」；网络参数和账号不写入仓库。
+
+### 固件构建交付
+
+[构建 35725861018](https://github.com/eze-root/JDC-Arthur/actions/runs/35725861018)
+已成功完成 `singbox-dualstack` 档位，2026-09-23 下载到本地
+`.local/firmware/2026-09-22/`。编译成功不代表已经刷机；实机仍运行原固件。
+`sha256sums` 中 8 个文件全部校验通过；manifest 包含已修复的
+`odhcpd-ipv6only 2026.06.29~5d7be43f-r1` 和 `nftables-json 1.1.6-r2`。
 
 首次构建还发现上游只有 `nftables-json` 和 `nftables-nojson` 实际包，
 `nftables` 是虚拟名称。已改选 `nftables-json`，构建检查接受两种实际实现。
