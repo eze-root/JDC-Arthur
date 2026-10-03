@@ -23,6 +23,49 @@ dnsmasq 转发到 `127.0.0.1#1053`，`noresolv=1`。`swu.edu.cn` 和
 在广告规则之前采用国内 DNS 和直连。客户端 AAAA 过滤仍先执行，其他
 广告规则保留。
 
+## 全直连应急开关（2026-10-03）
+
+打开 [本地控制面板](http://192.168.13.1:9091/ui/)，将运行模式从
+**Rule / 规则** 切换到 **Direct / 直连**。恢复日常分流时再选 Rule。
+这是运行模式开关，不是 `select` 代理组中的节点选择；当前实机保持 Rule。
+
+Direct 模式下，新建的客户端连接全部使用 `direct` 出口，跳过代理分流、
+广告拒绝及后续嗅探/地址改写。DNS 仍由 dnsmasq 转入 sing-box：普通域名
+直接查询 `223.5.5.5:443` 的 AliDNS DoH，不经过代理，也不执行广告 DNS
+拒绝；`swu.edu.cn`、`byr.pt` 保留校园 `192.0.0.33:53` UDP 例外。
+原有客户端 IPv4 为主策略和 byr.pt 的 IPv6 例外在两种模式下都保留。
+
+切换不重启服务；已有连接可能继续使用原出口。需要立即重建时，在面板
+连接页关闭相关连接，或关闭再打开应用。启用的 sing-box 缓存会保存所选
+模式；手动切回 Rule 才恢复日常分流。全直连不解决校园认证失效或上游
+网络故障，依赖代理的站点也可能打不开。代理节点后台健康检查不属于
+客户端流量，切换 Direct 并不停止这些检查。
+
+原配置的 `clash_mode=direct` 在广告规则之后，仍会被广告规则提前拦截。
+使用下面的工具把直连规则前移：DNS 放在 IPv4 过滤及校园例外之后，
+连接路由放在 `dns-in` 与 53 端口 DNS 劫持之后。Rule 模式的规则顺序、
+解析器、代理节点和凭据均保留。该工具针对上述已有 Arthur 私人配置，
+遇到不同的 DNS 入口或未知 Direct 策略会停止，避免错误覆盖。
+
+```sh
+python3 scripts/patch-direct-mode.py /private/path/config.json /private/path/direct-candidate.json
+# 将候选 JSON 私密传到路由器后执行：
+singbox-install-config /tmp/direct-candidate.json
+/etc/init.d/sing-box restart
+```
+
+订阅覆盖私人配置后需重新应用这些策略并验证。此修改只涉及私人 JSON
+和本地配置工具，无需重新编译或刷写固件。
+
+实机验证：在 Rule → Direct → Rule 中，`doubleclick.net` 分别得到
+REFUSED → 有效 A 记录 → REFUSED；B 站和西南大学解析正常，普通微信
+域名 AAAA 为空，byr.pt AAAA 保留。同一 `1.1.1.1:443` TCP 探测在 Rule
+下经过 `select` 代理链，在 Direct 下命中 `clash_mode=direct`，连接链仅
+含 `direct`。该地址的直连 TLS 握手被重置，出口验证不代表境外网站全部
+可用。测试结束恢复 Rule。本地 30 项测试中 29 项通过；仅 Linux nftables
+隔离环境测试在 macOS 上跳过。候选配置通过实机 sing-box 1.13.21 校验。
+模式语义及保存行为参见 [sing-box Clash API 文档](https://sing-box.sagernet.org/configuration/experimental/clash-api/)。
+
 ## 1. 当前实机基线
 
 2026-09-20 已从电脑直连 LAN、路由器 WAN 接校园/单位网络的拓扑完成只读检查。

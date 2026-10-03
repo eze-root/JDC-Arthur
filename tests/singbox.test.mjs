@@ -683,3 +683,68 @@ test('media exceptions precede ads without changing IPv4 filtering, resolvers or
   assert.notEqual(run(bad, f.root + '/media-invalid.json').status, 0);
   assert.equal(fs.existsSync(f.root + '/media-invalid.json'), false);
 });
+
+test('Direct mode bypasses ads and proxies while preserving DNS interception and IPv6 exceptions', t => {
+  const f = fixture(t);
+  const guard = { type: 'logical', mode: 'and', rules: [
+    { inbound: ['dns-in'] }, { query_type: ['AAAA', 'HTTPS', 'SVCB'] },
+    { domain_suffix: ['byr.pt', 'lan', 'local', 'ip6.arpa'], invert: true }
+  ], action: 'predefined', rcode: 'NOERROR' };
+  const campus = { domain_suffix: ['swu.edu.cn', 'byr.pt'], action: 'route',
+    server: 'dns-campus', strategy: 'prefer_ipv4' };
+  const dnsEntry = [{ inbound: 'dns-in', action: 'hijack-dns' },
+    { port: 53, action: 'hijack-dns' }];
+  const dnsAds = { rule_set: 'geosite-category-ads-all', action: 'predefined', rcode: 'REFUSED' };
+  const routeAds = { rule_set: 'geosite-category-ads-all', action: 'reject' };
+  const oldDns = { clash_mode: 'direct', server: 'dns_direct' };
+  const routeDirect = { clash_mode: 'direct', action: 'route', outbound: 'direct' };
+  const original = {
+    dns: { servers: [
+      { tag: 'dns_direct', type: 'https', server: '223.5.5.5' },
+      { tag: 'dns-campus', type: 'udp', server: '192.0.0.33' },
+      { tag: 'dns_proxy', type: 'https', server: '1.1.1.1', detour: 'select' }
+    ], rules: [guard, campus, dnsAds, oldDns], final: 'dns_proxy' },
+    route: { rules: [...dnsEntry, { action: 'sniff' }, routeAds, routeDirect],
+      default_domain_resolver: 'dns_direct', final: 'select' },
+    outbounds: [{ tag: 'direct', type: 'direct' }, { tag: 'select', password: 'fixture-secret' }],
+    experimental: { clash_api: { external_controller: '127.0.0.1:9091', secret: 'fixture-secret',
+      default_mode: 'rule' }, cache_file: { enabled: true } }
+  };
+  const input = f.write('direct-input.json', JSON.stringify(original));
+  const output = f.root + '/direct-output.json';
+  const run = (src, dst) => spawnSync('python3',
+    [path.join(repo, 'scripts/patch-direct-mode.py'), src, dst], { encoding: 'utf8' });
+  const result = run(input, output);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-secret/);
+  const updated = JSON.parse(fs.readFileSync(output));
+  assert.deepEqual(updated.dns.rules, [guard, campus,
+    { ...oldDns, action: 'route', strategy: 'prefer_ipv4' }, dnsAds]);
+  assert.deepEqual(updated.route.rules, [...dnsEntry, routeDirect, { action: 'sniff' }, routeAds]);
+  // Ignoring inactive Direct-mode rules must preserve the ordinary Rule policy.
+  for (const section of ['dns', 'route']) {
+    assert.deepEqual(updated[section].rules.filter(r => r.clash_mode !== 'direct'),
+      original[section].rules.filter(r => r.clash_mode !== 'direct'));
+    assert.equal(updated[section].final, original[section].final);
+  }
+  assert.deepEqual(updated.dns.servers, original.dns.servers);
+  assert.deepEqual(updated.outbounds, original.outbounds);
+  assert.deepEqual(updated.experimental, original.experimental);
+  assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+  assert.notEqual(run(input, output).status, 0);
+  assert.equal(run(output, f.root + '/direct-repeat.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/direct-repeat.json')), updated);
+  for (const [name, mutate] of [
+    ['proxy-dns', c => { c.dns.servers[0].detour = 'select'; }],
+    ['missing-hijack', c => { c.route.rules.shift(); }],
+    ['missing-guard', c => { c.dns.rules.shift(); }],
+    ['unknown-policy', c => { c.route.rules.at(-1).outbound = 'select'; }]
+  ]) {
+    const bad = structuredClone(original);
+    mutate(bad);
+    const src = f.write(name + '.json', JSON.stringify(bad));
+    assert.notEqual(run(src, f.root + '/' + name + '-output.json').status, 0);
+    assert.equal(fs.existsSync(f.root + '/' + name + '-output.json'), false);
+  }
+});
