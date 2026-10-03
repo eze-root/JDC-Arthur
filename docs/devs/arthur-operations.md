@@ -1,6 +1,6 @@
 # 亚瑟：连接、存储、升级与验收
 
-## 已确认的 DNS 策略（2026-09-23）
+## 已确认的 DNS 策略（2026-10-03）
 
 当前国内直连与微信 DNS 使用 **`223.5.5.5:443` 的 DoH（HTTPS over TCP）**。
 此前按用户要求使用 TCP 53；9 月 23 日 17:59 的日志再次记录百度、B 站、
@@ -17,6 +17,11 @@ dnsmasq 转发到 `127.0.0.1#1053`，`noresolv=1`。`swu.edu.cn` 和
 实测未认证时该路径仍可解析，TCP 则超时。其他域名仍按上述策略处理。
 活动私人配置位于路由器
 `/mnt/mmcblk0p27/sing-box/config/config.json`，不放入公共仓库或固件。
+
+2026-10-03 增加媒体兼容例外：`youku.com`、`ykimg.com` 及其子域，
+精确域名 `edith-seb.xiaohongshu.com`，以及下述验证过的优酷共用接口，
+在广告规则之前采用国内 DNS 和直连。客户端 AAAA 过滤仍先执行，其他
+广告规则保留。
 
 ## 1. 当前实机基线
 
@@ -365,6 +370,51 @@ DoH 的配置字段依据 [sing-box HTTPS DNS 文档](https://sing-box.sagernet.
 重复查询包括缓存命中，不能作为 80 次独立上游测试。百度、B 站、微信、
 西南大学和 Google 的 HTTPS 均返回 HTTP 200，检查窗口中新增 DNS 错误为 0。
 该修复绕开已确认发生超时的端口，仍需观察真实客户端是否复发。
+
+### 2026-10-03：媒体加载慢与优酷 VPN/广告拦截提示
+
+本次检查确认国内解析仍使用 AliDNS DoH，没有退回 TCP 53；未复现前次
+DNS 超时。微信和小红书常见域名约 10–60 毫秒返回，实际微信连接命中
+`direct` 或 `direct-wechat-cdn`。图片域名根路径的 TLS/HTTP 响应较快，
+但根路径返回 400/403 只能验证连接，不能证明具体图片加载正常。
+
+用户提供的优酷视频在测试浏览器复现 `0502-10101`，完整提示同时包含
+「VPN 代理软件或广告拦截插件」。实际优酷首页、账号和播放接口命中直连；
+路由器对 `ad.youku.com`、`atm.youku.com`、`ykad-data.youku.com` 和
+`edith-seb.xiaohongshu.com` 等返回 REFUSED。播放器控制台同时记录
+广告请求 `Failed to fetch`，因此增加限定域名例外，而非更换代理出口。
+
+```sh
+python3 scripts/patch-media-direct.py /private/path/config.json /private/path/media-candidate.json
+```
+
+脚本只在 DNS 和路由的广告规则前增加例外，不改变解析器、私人节点或
+IPv4 优先规则；输出为新建 0600 文件。实机核心检查通过后应用，回滚位于
+数据分区 `sing-box/backup-20261003/config-before-media.json`。
+应用后 `ad.youku.com`、`ykad-data.youku.com`、小红书上述接口正常解析，
+`valf.atm.youku.com/vf` 的 HTTPS 返回 200；其他广告域名仍被拒绝。
+
+只放行优酷自身域名仍出现播放错误。随后仅对测试电脑暂时排除广告拦截，
+同一视频进入片头广告播放，确认广告过滤确实影响播放器。根据该窗口的
+实际请求补充以下精确域名，而不是放行整个共享服务域：
+
+- `fourier.taobao.com`
+- `log.mmstat.com`、`log-v6.mmstat.com`
+- `gm.mmstat.com`、`gm-v6.mmstat.com`
+- `yt.mmstat.com`、`yt-v6.mmstat.com`
+- `pd.ads.cn.miaozhen.com`、`yktd.m.cn.miaozhen.com`
+
+这些是共享接口，其例外也适用于其他使用同一主机名的网站。完成后移除
+测试电脑的临时广告豁免，日志恢复 `info`；普通广告主机 `qzs.gdtimg.com`
+和 `ads-img-al.xhscdn.com` 仍返回 REFUSED。
+恢复过滤后再次刷新用户提供的视频，播放器继续进入片头广告倒计时，
+不再显示 VPN/广告拦截错误。微信、小红书具体图片的体验仍待用户复测；
+本次不把 DNS 成功或 CDN 根路径响应当成全部图片已恢复。
+
+另见旧 IPv6 中继的限制：保留连接中的一个 IPv6 源地址没有 LAN `/128`
+回程。使用临时路由和链路本地探测后，设备没有响应邻居发现；临时路由已
+撤销。尚不能证明该地址仍属于在线设备，更不能将其直接认定为本次微信
+图片慢的原因。完整 odhcpd 修复仍在已编译、尚未刷入的新固件中。
 
 ### 固件构建交付
 

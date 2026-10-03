@@ -633,3 +633,53 @@ test('campus DNS restores school lookups while retaining the IPv4 guard and publ
   assert.equal(other.dns.servers.length, updated.dns.servers.length);
   assert.equal(other.dns.servers.at(-1).server, '192.0.0.34');
 });
+
+test('media exceptions precede ads without changing IPv4 filtering, resolvers or private nodes', t => {
+  const f = fixture(t);
+  const guard = { type: 'logical', rules: [{ query_type: ['AAAA', 'HTTPS', 'SVCB'] }],
+    action: 'predefined', rcode: 'NOERROR' };
+  const dnsAds = { rule_set: 'geosite-category-ads-all', action: 'predefined', rcode: 'REFUSED' };
+  const routeAds = { rule_set: ['geosite-category-ads-all'], action: 'reject' };
+  const original = {
+    dns: { servers: [{ tag: 'dns_direct', type: 'https', server: '223.5.5.5' }],
+      rules: [guard, { domain_suffix: ['swu.edu.cn', 'byr.pt'], server: 'dns-campus' }, dnsAds],
+      final: 'dns_proxy' },
+    route: { rules: [{ action: 'sniff' }, routeAds], final: 'private' },
+    outbounds: [{ tag: 'direct', type: 'direct' }, { tag: 'private', password: 'fixture-secret' }]
+  };
+  const input = f.write('media-input.json', JSON.stringify(original));
+  const output = f.root + '/media-output.json';
+  const run = (src, dst) => spawnSync('python3',
+    [path.join(repo, 'scripts/patch-media-direct.py'), src, dst], { encoding: 'utf8' });
+  const result = run(input, output);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-secret/);
+  const updated = JSON.parse(fs.readFileSync(output));
+  assert.deepEqual(updated.dns.servers, original.dns.servers);
+  assert.deepEqual(updated.outbounds, original.outbounds);
+  assert.equal(updated.route.final, original.route.final);
+  assert.equal(updated.dns.final, original.dns.final);
+  assert.deepEqual(updated.dns.rules.slice(0, 2), original.dns.rules.slice(0, 2));
+  assert.deepEqual(updated.dns.rules[2], { domain_suffix: ['youku.com', 'ykimg.com'],
+    action: 'route', server: 'dns_direct', strategy: 'prefer_ipv4' });
+  assert.deepEqual(updated.dns.rules[3].domain, ['edith-seb.xiaohongshu.com']);
+  assert.ok(updated.dns.rules[4].domain.includes('yktd.m.cn.miaozhen.com'));
+  assert.ok(updated.dns.rules[4].domain.includes('fourier.taobao.com'));
+  assert.equal(updated.dns.rules[4].domain_suffix, undefined);
+  assert.deepEqual(updated.dns.rules.at(-1), dnsAds);
+  assert.deepEqual(updated.route.rules[0], original.route.rules[0]);
+  assert.deepEqual(updated.route.rules[1], { domain_suffix: ['youku.com', 'ykimg.com'],
+    action: 'route', outbound: 'direct' });
+  assert.deepEqual(updated.route.rules[2].domain, ['edith-seb.xiaohongshu.com']);
+  assert.deepEqual(updated.route.rules[3].domain, updated.dns.rules[4].domain);
+  assert.deepEqual(updated.route.rules.at(-1), routeAds);
+  assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+  assert.notEqual(run(input, output).status, 0);
+  assert.equal(run(output, f.root + '/media-repeat.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/media-repeat.json')), updated);
+  const bad = f.write('media-no-sniff.json', JSON.stringify({ ...original,
+    route: { rules: [routeAds] } }));
+  assert.notEqual(run(bad, f.root + '/media-invalid.json').status, 0);
+  assert.equal(fs.existsSync(f.root + '/media-invalid.json'), false);
+});
