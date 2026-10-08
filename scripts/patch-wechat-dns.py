@@ -75,7 +75,10 @@ def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
         dns["rules"] = [guard] + [r for r in dns["rules"] if not previous_guard(r)]
     if refresh_cdn:
         rules = config.get("route", {}).get("rules", [])
-        sniff = next((i for i, r in enumerate(rules) if r.get("action") == "sniff"), None)
+        def general_sniff(rule):
+            return (rule.get("action") == "sniff"
+                    and set(rule).issubset({"action", "sniffer", "timeout"}))
+        sniff = next((i for i, r in enumerate(rules) if general_sniff(r)), None)
         if sniff is None or not isinstance(config.get("outbounds"), list):
             raise ValueError("CDN refresh requires existing sniff rules and outbounds")
         direct = {"type": "direct", "tag": DIRECT_TAG,
@@ -89,7 +92,7 @@ def patch(config, server, ipv4_first=False, ipv6_domains=(), refresh_cdn=False,
                       "override_address": host} for host in CDN_HOSTS]
         # Preserve the exact requested hostname, port and TLS; refresh only its IP.
         rules = [r for r in rules if r not in overrides]
-        sniff = next(i for i, r in enumerate(rules) if r.get("action") == "sniff")
+        sniff = next(i for i, r in enumerate(rules) if general_sniff(r))
         config["route"]["rules"] = rules[:sniff + 1] + overrides + rules[sniff + 1:]
     return config
 

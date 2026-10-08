@@ -152,7 +152,8 @@ test('shell syntax parses for router and build scripts', () => {
     'files/etc/init.d/sing-box-update', 'files/etc/uci-defaults/98-arthur-profile',
     'files/etc/uci-defaults/99-singbox', 'files/usr/sbin/arthur-diagnose',
     'scripts/prepare-arthur.sh', 'scripts/install-official-sing-box.sh',
-    'scripts/check-arthur-config.sh'];
+    'scripts/check-arthur-config.sh', 'scripts/configure-ipv4-wifi.sh',
+    'scripts/configure-ipv6-client-return.sh'];
   for (const p of list) {
     const result = spawnSync(shell, ['-n'], { input: source(p), encoding: 'utf8' });
     assert.equal(result.status, 0, p + ': ' + result.stderr);
@@ -747,4 +748,69 @@ test('Direct mode bypasses ads and proxies while preserving DNS interception and
     assert.notEqual(run(src, f.root + '/' + name + '-output.json').status, 0);
     assert.equal(fs.existsSync(f.root + '/' + name + '-output.json'), false);
   }
+});
+
+test('Global mode proxies public traffic and DNS while retaining campus and local exceptions', t => {
+  const f = fixture(t);
+  const dnsDirect = { clash_mode: 'direct', action: 'route', server: 'dns_direct', strategy: 'prefer_ipv4' };
+  const routeDirect = { clash_mode: 'direct', action: 'route', outbound: 'direct' };
+  const original = {
+    dns: { servers: [{ tag: 'dns_proxy', type: 'https', server: '1.1.1.1', detour: 'select' }],
+      rules: [{ query_type: 'AAAA', action: 'predefined', rcode: 'NOERROR' },
+        { domain_suffix: ['swu.edu.cn', 'byr.pt'], server: 'dns-campus' }, dnsDirect,
+        { rule_set: 'geosite-category-ads-all', action: 'predefined', rcode: 'REFUSED' }], final: 'dns_proxy' },
+    route: { rules: [{ inbound: 'dns-in', action: 'hijack-dns' },
+      { port: 53, action: 'hijack-dns' }, routeDirect, { action: 'sniff' },
+      { rule_set: 'geosite-category-ads-all', action: 'reject' }], final: 'select' },
+    outbounds: [{ tag: 'direct', type: 'direct' },
+      { tag: 'select', type: 'selector', outbounds: ['private'] },
+      { tag: 'private', password: 'fixture-secret' }],
+    experimental: { clash_api: { default_mode: 'rule', secret: 'fixture-secret' } }
+  };
+  const input = f.write('global-input.json', JSON.stringify(original));
+  const output = f.root + '/global-output.json';
+  const run = (src, dst) => spawnSync('python3',
+    [path.join(repo, 'scripts/patch-global-mode.py'), src, dst], { encoding: 'utf8' });
+  const result = run(input, output);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-secret/);
+  const updated = JSON.parse(fs.readFileSync(output));
+  assert.deepEqual(updated.dns.rules[2], { clash_mode: 'global', action: 'route',
+    server: 'dns_proxy', strategy: 'prefer_ipv4' });
+  const globalRules = updated.route.rules.slice(2, 6);
+  assert.deepEqual(globalRules, [
+    { clash_mode: 'global', action: 'sniff' },
+    { clash_mode: 'global', ip_is_private: true, action: 'route', outbound: 'direct' },
+    { clash_mode: 'global', domain_suffix: ['swu.edu.cn', 'byr.pt'], action: 'route', outbound: 'direct' },
+    { clash_mode: 'global', action: 'route', outbound: 'select' }
+  ]);
+  for (const section of ['dns', 'route']) {
+    assert.deepEqual(updated[section].rules.filter(r => r.clash_mode !== 'global'), original[section].rules);
+    assert.equal(updated[section].final, original[section].final);
+  }
+  assert.deepEqual(updated.outbounds, original.outbounds);
+  assert.deepEqual(updated.experimental, original.experimental);
+  assert.deepEqual(updated.dns.servers, original.dns.servers);
+  assert.deepEqual(JSON.parse(fs.readFileSync(input)), original);
+  const refreshedPath = f.root + '/global-wechat.json';
+  const refreshedResult = spawnSync('python3',
+    [path.join(repo, 'scripts/patch-wechat-dns.py'), output, refreshedPath, '--refresh-cdn-addresses'],
+    { encoding: 'utf8' });
+  assert.equal(refreshedResult.status, 0, refreshedResult.stderr);
+  const refreshedRules = JSON.parse(fs.readFileSync(refreshedPath)).route.rules;
+  const generalSniff = refreshedRules.findIndex(r => JSON.stringify(r) === '{"action":"sniff"}');
+  for (let i = 0; i < refreshedRules.length; i++) {
+    if (refreshedRules[i].override_address) {
+      assert.ok(i > generalSniff, 'CDN overrides must not follow only the Global-specific sniff');
+    }
+  }
+  if (process.platform !== 'win32') assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+  assert.notEqual(run(input, output).status, 0);
+  assert.equal(run(output, f.root + '/global-repeat.json').status, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.root + '/global-repeat.json')), updated);
+  const bad = structuredClone(original);
+  bad.dns.servers[0].detour = 'direct';
+  const badPath = f.write('global-bad.json', JSON.stringify(bad));
+  assert.notEqual(run(badPath, f.root + '/global-invalid.json').status, 0);
+  assert.equal(fs.existsSync(f.root + '/global-invalid.json'), false);
 });

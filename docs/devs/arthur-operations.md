@@ -23,10 +23,45 @@ dnsmasq 转发到 `127.0.0.1#1053`，`noresolv=1`。`swu.edu.cn` 和
 在广告规则之前采用国内 DNS 和直连。客户端 AAAA 过滤仍先执行，其他
 广告规则保留。
 
-## 全直连应急开关（2026-10-03）
+## 双频 IPv4 专用 Wi-Fi（2026-10-08）
 
-打开 [本地控制面板](http://192.168.13.1:9091/ui/)，将运行模式从
-**Rule / 规则** 切换到 **Direct / 直连**。恢复日常分流时再选 Rule。
+现有 `KDD` 保留 IPv6 和 PT 使用；新增 **`KDD-IPv4`**，同时在 2.4 GHz
+和 5 GHz 广播，复用各频段原有 Wi-Fi 密码。手机日常刷视频可连接新网络，
+需要 byr.pt 等纯 IPv6 服务时使用原网络。两套网络共用 sing-box 的模式开关。
+
+新网络使用 `br-wifi4` / `192.168.14.1/24`，DHCP 范围 `.100` 至 `.249`。
+网桥内核 IPv6 已禁用，RA、DHCPv6、NDP 均关闭；这不依赖应用是否使用
+自带 DNS，也不需要维护逐应用 IPv6 黑名单。旧网络、WAN IPv6 和代理节点
+保留。新网络加入原 LAN 防火墙区域，可按 IP 访问原 LAN 设备；跨子网
+的自动发现并不等同于在同一个二层网络。dnsmasq 继续转发到 sing-box，
+TProxy 的 LAN 接口列表为 `br-lan br-wifi4`。日常仍使用 Rule 模式。
+
+```sh
+# 在已配置原 Wi-Fi、DNS 转发及 sing-box 的路由器上执行：
+sh configure-ipv4-wifi.sh
+# 可选第一个参数指定新 SSID；默认是原 radio0 SSID 加 -IPv4。
+```
+
+对应项目工具为 `scripts/configure-ipv4-wifi.sh`。它私密读取已有密码，先
+备份五个 UCI 配置文件，检查子网/节名冲突和防火墙，再应用并验证 IPv6
+确实禁用；失败会恢复备份。仓库和固件不保存真实 Wi-Fi 密码。重置或不
+保留配置刷机后，先恢复原 Wi-Fi 和私人 sing-box JSON，再运行本工具。
+
+实机确认两个新 AP 均广播，接口已 UP、只含 IPv4 地址，IPv6 地址与前缀
+列表均为空，`disable_ipv6=1`。撤回了排查时尝试的逐应用 IPv6 拒绝策略；
+最终配置不包含该策略。手机已获得新子网 DHCP 地址，红果多个视频 CDN
+连接均命中 IPv4 `direct`，采样中多个连接已下载数 MB；用户确认「已连接，
+换集明显变快」。这验证了新网络对本次症状有效，不将它扩展为所有卡顿的
+唯一根因结论。
+
+## Rule / Direct / Global 模式（2026-10-08）
+
+打开 [本地控制面板的设置页](http://192.168.13.1:9091/ui/#/configs)，在
+左侧「设定」的 **Mode** 中选择 **rule**、**direct** 或 **global**。
+Rule 日常分流，Direct 全直连，Global 通过 `select` 代理公网流量。
+Global 保留局域网和 `swu.edu.cn`、`byr.pt` 的直连例外；公共 DNS 使用
+经 `select` 访问的 `dns_proxy`，校园 DNS 例外保留。Direct 和 Global
+均跳过后续广告拒绝规则。恢复日常分流时再选 Rule。
 这是运行模式开关，不是 `select` 代理组中的节点选择；当前实机保持 Rule。
 
 Direct 模式下，新建的客户端连接全部使用 `direct` 出口，跳过代理分流、
@@ -49,8 +84,9 @@ Direct 模式下，新建的客户端连接全部使用 `direct` 出口，跳过
 
 ```sh
 python3 scripts/patch-direct-mode.py /private/path/config.json /private/path/direct-candidate.json
+python3 scripts/patch-global-mode.py /private/path/direct-candidate.json /private/path/modes-candidate.json
 # 将候选 JSON 私密传到路由器后执行：
-singbox-install-config /tmp/direct-candidate.json
+singbox-install-config /tmp/modes-candidate.json
 /etc/init.d/sing-box restart
 ```
 
@@ -65,6 +101,39 @@ REFUSED → 有效 A 记录 → REFUSED；B 站和西南大学解析正常，普
 可用。测试结束恢复 Rule。本地 30 项测试中 29 项通过；仅 Linux nftables
 隔离环境测试在 macOS 上跳过。候选配置通过实机 sing-box 1.13.21 校验。
 模式语义及保存行为参见 [sing-box Clash API 文档](https://sing-box.sagernet.org/configuration/experimental/clash-api/)。
+
+2026-10-08 实测同一个 `223.5.5.5:443` TLS 连接在 Rule/Direct 下命中
+`direct`，Global 下命中 `clash_mode=global` 并经过 `select` 的代理链。
+API 返回三种模式，测试结束恢复 Rule。更新微信 CDN 工具时，必须在
+无条件 sniff 之后插入地址刷新规则，不能误用新增的 Global 专用 sniff。
+
+### 原 IPv6 网络的回程补救
+
+本次用当前电脑实际选出的 IPv6 源地址复现了缺少 LAN `/128` 的问题：
+回程错误指向 WAN，byr.pt 的 TCP 建连超时。临时增加正确的 LAN 路由后，
+同一请求约 0.17 秒获得 HTTP 302，邻居表确认该地址的 MAC 在 LAN。
+这验证了回程缺失会造成连接故障，但不能据此认定它是红果卡顿的唯一原因。
+当时红果主要域名 DNS 约 12–24 毫秒，视频连接直连；切到 Direct 后用户
+仍反馈慢。因此没有将问题简单归因于 DNS 解析耗时或代理分流。
+
+在尚未升级旧 odhcpd 的这台实机安装了
+`scripts/configure-ipv6-client-return.sh`：从 `br-lan` 的实际入站流量学习
+客户端全局 IPv6 地址，地址一小时未使用会过期；只将发回这些地址的包
+标记后通过独立路由表 199 返回 LAN。表名 `jdc_ipv6_return`，策略优先级
+9999，标记位 `0x20000000`，保留其他标记位。它不放宽防火墙，不改变
+WAN 默认路由，不对其他目的地址生效，也不为新 IPv4 Wi-Fi 启用 IPv6。
+原上游 NDP/RA 仍由 odhcpd 处理，这个补救不等于替代新版 odhcpd。
+
+服务 `jdc-ipv6-return` 已启用开机启动并跟随 LAN 接口重新建立规则。
+仅删除自己持有的表、规则与路由，遇到已有资源占用会拒绝安装。
+安装后无需临时主机路由，byr.pt IPv6 得到 HTTP 302；B 站 IPv4、Google
+均得到 HTTP 200。回滚此补救可执行：
+
+```sh
+/etc/init.d/jdc-ipv6-return disable
+/etc/init.d/jdc-ipv6-return stop
+rm /etc/hotplug.d/iface/98-jdc-ipv6-return
+```
 
 ## 1. 当前实机基线
 
