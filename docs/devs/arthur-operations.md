@@ -23,11 +23,12 @@ dnsmasq 转发到 `127.0.0.1#1053`，`noresolv=1`。`swu.edu.cn` 和
 在广告规则之前采用国内 DNS 和直连。客户端 AAAA 过滤仍先执行，其他
 广告规则保留。
 
-## 双频 IPv4 专用 Wi-Fi（2026-10-08）
+## 双频 IPv4 专用 Wi-Fi（2026-10-10 更新名称）
 
-现有 `KDD` 保留 IPv6 和 PT 使用；新增 **`KDD-IPv4`**，同时在 2.4 GHz
-和 5 GHz 广播，复用各频段原有 Wi-Fi 密码。手机日常刷视频可连接新网络，
-需要 byr.pt 等纯 IPv6 服务时使用原网络。两套网络共用 sing-box 的模式开关。
+2026-10-10 将原双栈 `KDD` 改名为 **`FOF`**，保留 IPv6 和 PT 使用；
+将 IPv4 专用 `KDD-IPv4` 改名为 **`KDD`**。两套网络均在 2.4 GHz 和
+5 GHz 广播，密码沿用各频段原有设置。手机日常刷视频连接 `KDD`，需要
+byr.pt 等纯 IPv6 服务时使用 `FOF`。两套网络共用 sing-box 的模式开关。
 
 新网络使用 `br-wifi4` / `192.168.14.1/24`，DHCP 范围 `.100` 至 `.249`。
 网桥内核 IPv6 已禁用，RA、DHCPv6、NDP 均关闭；这不依赖应用是否使用
@@ -38,8 +39,9 @@ TProxy 的 LAN 接口列表为 `br-lan br-wifi4`。日常仍使用 Rule 模式�
 
 ```sh
 # 在已配置原 Wi-Fi、DNS 转发及 sing-box 的路由器上执行：
-sh configure-ipv4-wifi.sh
-# 可选第一个参数指定新 SSID；默认是原 radio0 SSID 加 -IPv4。
+sh configure-ipv4-wifi.sh KDD
+# 第一个参数指定 IPv4 专用 SSID；省略时是原 radio0 SSID 加 -IPv4。
+# 当前名称布局应显式传 KDD，原双栈 SSID 为 FOF。
 ```
 
 对应项目工具为 `scripts/configure-ipv4-wifi.sh`。它私密读取已有密码，先
